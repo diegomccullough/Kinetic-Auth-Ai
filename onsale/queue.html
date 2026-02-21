@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Queue — Midnight Run</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/queue.css">
+</head>
+<body>
+  <div class="queue-page">
+    <header class="queue-header">
+      <div class="queue-header-inner">
+        <p class="queue-event-name">Midnight Run</p>
+        <h1 class="queue-title">You're in the queue</h1>
+      </div>
+    </header>
+
+    <main class="queue-main">
+      <div class="queue-card">
+        <div class="queue-position-wrap">
+          <p class="queue-position-label">Your position</p>
+          <p class="queue-position-value" id="queue-position" aria-live="polite">—</p>
+        </div>
+
+        <p class="queue-wait">
+          Estimated wait: <strong id="queue-wait-time">—</strong>
+        </p>
+
+        <div class="queue-progress-wrap">
+          <div class="queue-progress-label">
+            <span>Progress</span>
+            <span id="queue-progress-pct">0%</span>
+          </div>
+          <div class="queue-progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <div class="queue-progress-fill" id="queue-progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="queue-metrics">
+          <div class="queue-metric">
+            <p class="queue-metric-label">Traffic surge</p>
+            <p class="queue-metric-value" id="surge-label">—</p>
+          </div>
+          <div class="queue-metric">
+            <p class="queue-metric-label">Server load</p>
+            <p class="queue-metric-value" id="server-load-pct">0%</p>
+            <div class="queue-load-bar">
+              <div class="queue-load-fill" id="server-load-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="queue-fairness">
+          <p>
+            <strong>Fair access.</strong> Your place in line is held. Please keep this tab open.
+            Do not refresh — you may lose your spot.
+          </p>
+        </div>
+
+        <div class="queue-cta-wrap">
+          <a href="checkout.html" class="queue-cta" id="queue-continue-btn">
+            Continue to checkout
+          </a>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="js/queue.js"></script>
+</body>
+</html>

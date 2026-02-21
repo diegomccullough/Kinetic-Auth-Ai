@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Midnight Run — Tickets</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/landing.css">
+</head>
+<body>
+  <main class="landing">
+    <section class="landing-hero" aria-label="Event details">
+      <div class="landing-hero-content">
+        <span class="landing-badge">Tickets on sale now</span>
+        <h1 class="landing-title">Midnight Run</h1>
+        <p class="landing-meta">Saturday, March 22, 2026 · 8:00 PM · Harbor Pavilion</p>
+
+        <div class="landing-countdown" aria-live="polite" aria-label="Time until event">
+          <div class="landing-countdown-item">
+            <span class="landing-countdown-value" id="countdown-days">--</span>
+            <span class="landing-countdown-label">Days</span>
+          </div>
+          <div class="landing-countdown-item">
+            <span class="landing-countdown-value" id="countdown-hours">--</span>
+            <span class="landing-countdown-label">Hours</span>
+          </div>
+          <div class="landing-countdown-item">
+            <span class="landing-countdown-value" id="countdown-mins">--</span>
+            <span class="landing-countdown-label">Min</span>
+          </div>
+          <div class="landing-countdown-item">
+            <span class="landing-countdown-value" id="countdown-secs">--</span>
+            <span class="landing-countdown-label">Sec</span>
+          </div>
+        </div>
+
+        <p class="landing-viewers">
+          <strong id="viewers-count">—</strong> users viewing now
+        </p>
+
+        <a href="queue.html" class="landing-cta" id="btn-buy-tickets">Buy Tickets</a>
+      </div>
+    </section>
+
+    <section class="landing-info">
+      <div class="landing-info-inner">
+        <p>Doors open 7:00 PM. All ages welcome. Secure checkout after queue.</p>
+      </div>
+    </section>
+  </main>
+  <script src="js/landing.js"></script>
+</body>
+</html>
