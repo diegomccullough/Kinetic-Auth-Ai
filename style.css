@@ -1,3 +1,12 @@
+/**
+ * style.css
+ * Grouped by ownership to reduce merge conflicts:
+ * - Base & layout (shared)
+ * - Ticketing Environment Layer (event, queue, confirmation)
+ * - Authentication Layer (verification screen only)
+ */
+
+/* ========== BASE & LAYOUT (shared) ========== */
 * {
   box-sizing: border-box;
 }
@@ -33,6 +42,11 @@ body {
   display: block;
 }
 
+.hidden {
+  display: none;
+}
+
+/* ========== TICKETING ENVIRONMENT (event, queue, confirmation) ========== */
 h1 {
   margin: 0 0 0.5rem;
   font-size: 1.25rem;
@@ -106,10 +120,6 @@ button:disabled {
   margin-top: 0.5rem;
 }
 
-.hidden {
-  display: none;
-}
-
 .confirmation-msg {
   font-size: 1rem;
   color: #333;
@@ -117,7 +127,7 @@ button:disabled {
   line-height: 1.5;
 }
 
-/* ----- Verification screen: dark theme, glass card ----- */
+/* ========== AUTHENTICATION LAYER (verification screen) ========== */
 .verification-screen {
   display: none;
   position: fixed;
@@ -146,7 +156,7 @@ button:disabled {
 
 .card-glass:has(.verification-complete) {
   border-color: rgba(72, 187, 120, 0.35);
-  box-shadow: 0 0 0 1px rgba(72, 187, 120, 0.2);
+  box-shadow: 0 0 0 1px rgba(72, 187, 120, 0.2), 0 0 24px rgba(72, 187, 120, 0.08);
 }
 
 .verification-title {
@@ -160,7 +170,25 @@ button:disabled {
 .verification-subtitle {
   color: rgba(255, 255, 255, 0.5);
   font-size: 0.85rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+/* Progress bar */
+.verification-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+
+.verification-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(88, 166, 255, 0.9), rgba(72, 187, 120, 0.9));
+  box-shadow: 0 0 10px rgba(88, 166, 255, 0.3);
+  transition: width 0.4s ease;
 }
 
 /* Progress steps */
@@ -223,15 +251,68 @@ button:disabled {
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* Status message */
-.verification-status {
-  font-size: 0.95rem;
-  color: rgba(255, 255, 255, 0.75);
-  min-height: 1.5rem;
-  margin-bottom: 1rem;
-  transition: color 0.3s ease;
+/* Status panel + cycling status */
+.verification-status-panel {
+  margin-bottom: 0.75rem;
 }
 
+.verification-status-panel .verification-status {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  min-height: 1.5rem;
+  margin-bottom: 0;
+  transition: color 0.3s ease;
+  letter-spacing: 0.01em;
+}
+
+/* Real-time motion feedback indicator */
+.motion-feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.motion-feedback-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.motion-feedback.active .motion-feedback-dot {
+  background: rgba(72, 187, 120, 0.9);
+  box-shadow: 0 0 8px rgba(72, 187, 120, 0.5);
+}
+
+.motion-feedback.active .motion-feedback-label {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Live motion graph */
+.motion-graph-wrap {
+  width: 100%;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 4px;
+}
+
+.motion-graph {
+  display: block;
+  width: 100%;
+  height: 44px;
+  border-radius: 4px;
+}
+
+/* Status message (final state) */
 .verification-status.complete {
   color: #3fb950;
   font-weight: 500;

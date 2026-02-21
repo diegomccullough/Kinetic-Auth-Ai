@@ -1,6 +1,6 @@
 /**
- * Motion-based verification: tilt left (gamma < -20), then right (gamma > 20).
- * Records motion samples and analyzes profile (duration, smoothness, stability, human confidence).
+ * Authentication Engine Layer
+ * Tilt + motion verification. Dispatches MOTION_COMPLETE when verification succeeds.
  */
 var motionAuth = (function () {
   var instructionEl;
@@ -13,6 +13,10 @@ var motionAuth = (function () {
   var step1El, step2El, step3El;
   var profileEl;
   var profileDurationEl, profileStabilityEl, profileConfidenceEl;
+  var progressFillEl;
+  var progressTrackEl;
+  var feedbackEl;
+  var graphCanvas;
   var leftDone = false;
   var rightDone = false;
   var onVerified = function () {};
@@ -21,13 +25,17 @@ var motionAuth = (function () {
   var lastSampleTime = 0;
   var SAMPLE_INTERVAL_MS = 50;
   var JUMP_THRESHOLD = 22;
+  var statusCycleTimer = null;
+  var STATUS_CYCLE_MS = 2200;
+  var GRAPH_MAX_POINTS = 80;
+  var GAMMA_RANGE = 90;
 
-  var STATUS = {
-    ANALYZING: 'Analyzing motion…',
-    HUMAN_DETECTED: 'Human motion detected',
-    STABILITY_PASSED: 'Stability check passed',
-    COMPLETE: 'Verification complete'
-  };
+  var STATUS_CYCLE = [
+    'Capturing motion data…',
+    'Analyzing stability…',
+    'Evaluating behavioral profile…',
+    'Human confidence score generated.'
+  ];
 
   function showFallback() {
     contentEl.classList.add('hidden');
@@ -35,8 +43,58 @@ var motionAuth = (function () {
   }
 
   function setStatus(msg, isComplete) {
+    if (!statusEl) return;
     statusEl.textContent = msg;
     statusEl.classList.toggle('complete', !!isComplete);
+  }
+
+  function updateProgress(pct) {
+    if (progressFillEl) progressFillEl.style.width = pct + '%';
+    if (progressTrackEl) progressTrackEl.setAttribute('aria-valuenow', pct);
+  }
+
+  function setFeedbackActive(active) {
+    if (feedbackEl) feedbackEl.classList.toggle('active', !!active);
+  }
+
+  function drawGraph() {
+    if (!graphCanvas || !samples.length) return;
+    var ctx = graphCanvas.getContext('2d');
+    var w = graphCanvas.width;
+    var h = graphCanvas.height;
+    ctx.clearRect(0, 0, w, h);
+    var pts = samples.length > GRAPH_MAX_POINTS ? samples.slice(-GRAPH_MAX_POINTS) : samples;
+    if (pts.length < 2) return;
+    ctx.strokeStyle = 'rgba(88, 166, 255, 0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (var i = 0; i < pts.length; i++) {
+      var x = (i / (pts.length - 1)) * w;
+      var g = Math.max(-GAMMA_RANGE, Math.min(GAMMA_RANGE, pts[i].gamma));
+      var y = h / 2 - (g / GAMMA_RANGE) * (h / 2 - 4);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  function stopStatusCycle() {
+    if (statusCycleTimer) {
+      clearInterval(statusCycleTimer);
+      statusCycleTimer = null;
+    }
+  }
+
+  function startStatusCycle() {
+    stopStatusCycle();
+    var idx = 0;
+    setStatus(STATUS_CYCLE[0], false);
+    statusCycleTimer = setInterval(function () {
+      if (leftDone && rightDone) return;
+      idx = (idx + 1) % 3;
+      setStatus(STATUS_CYCLE[idx], false);
+    }, STATUS_CYCLE_MS);
   }
 
   function updateSteps() {
@@ -72,7 +130,6 @@ var motionAuth = (function () {
     var last = samples[samples.length - 1];
     var durationMs = last.timestamp - first.timestamp;
     var durationSec = durationMs / 1000;
-
     var sumDelta = 0;
     var jumpCount = 0;
     for (var i = 1; i < samples.length; i++) {
@@ -81,16 +138,13 @@ var motionAuth = (function () {
       if (d > JUMP_THRESHOLD) jumpCount++;
     }
     var avgDelta = sumDelta / (samples.length - 1);
-
     var smoothnessScore = Math.max(0, 100 - avgDelta * 4);
     var jumpPenalty = Math.min(100, jumpCount * 18);
     var stabilityScore = Math.max(0, Math.min(100, Math.round(smoothnessScore - jumpPenalty)));
-
     var durationBonus = 0;
     if (durationSec >= 0.8 && durationSec <= 20) durationBonus = 10;
     else if (durationSec < 0.3) durationBonus = -30;
     var humanConfidence = Math.max(0, Math.min(100, Math.round(stabilityScore + durationBonus)));
-
     return {
       durationSec: durationSec,
       stabilityScore: stabilityScore,
@@ -116,26 +170,26 @@ var motionAuth = (function () {
 
   function updateInstruction() {
     if (leftDone && rightDone) {
+      stopStatusCycle();
+      updateProgress(100);
+      setFeedbackActive(false);
       instructionEl.textContent = 'Verification successful';
-      setStatus(STATUS.STABILITY_PASSED, false);
+      setStatus(STATUS_CYCLE[3], true);
       updateSteps();
       proceedBtn.disabled = false;
       proceedBtn.textContent = 'Proceed';
       onVerified();
+      document.dispatchEvent(new CustomEvent('MOTION_COMPLETE', { detail: { verified: true } }));
 
       var result = analyzeProfile();
       showProfileResults(result);
-
-      setTimeout(function () {
-        setStatus(STATUS.COMPLETE, true);
-      }, 280);
     } else if (leftDone) {
+      updateProgress(33);
       instructionEl.textContent = 'Tilt your phone RIGHT';
-      setStatus(STATUS.HUMAN_DETECTED, false);
       updateSteps();
     } else {
+      updateProgress(0);
       instructionEl.textContent = 'Tilt your phone LEFT';
-      setStatus(STATUS.ANALYZING, false);
       updateSteps();
     }
   }
@@ -144,15 +198,20 @@ var motionAuth = (function () {
     var gamma = e.gamma;
     var beta = e.beta;
     if (gammaEl) gammaEl.textContent = gamma != null ? Math.round(gamma) : '—';
-    if (gamma != null) recordSample(gamma, beta);
+    if (gamma != null) {
+      setFeedbackActive(true);
+      recordSample(gamma, beta);
+      drawGraph();
+    }
     if (gamma == null) return;
     if (!leftDone && gamma < -20) {
       leftDone = true;
-      setStatus(STATUS.HUMAN_DETECTED, false);
+      setStatus(STATUS_CYCLE[1], false);
       updateSteps();
     }
     if (!rightDone && gamma > 20) {
       rightDone = true;
+      updateProgress(66);
       updateSteps();
     }
     updateInstruction();
@@ -162,11 +221,15 @@ var motionAuth = (function () {
     permissionPrompt.classList.add('hidden');
     samples = [];
     lastSampleTime = 0;
+    updateProgress(0);
+    setFeedbackActive(false);
+    drawGraph();
+    startStatusCycle();
     if (!listenerBound) {
       window.addEventListener('deviceorientation', onOrientation);
       listenerBound = true;
     }
-    setStatus(STATUS.ANALYZING, false);
+    setStatus(STATUS_CYCLE[0], false);
     updateSteps();
     onOrientation({ gamma: null });
   }
@@ -189,16 +252,24 @@ var motionAuth = (function () {
     profileDurationEl = document.getElementById('profile-duration');
     profileStabilityEl = document.getElementById('profile-stability');
     profileConfidenceEl = document.getElementById('profile-confidence');
+    progressFillEl = document.getElementById('verification-progress-fill');
+    progressTrackEl = progressFillEl ? progressFillEl.parentElement : null;
+    feedbackEl = document.getElementById('motion-feedback');
+    graphCanvas = document.getElementById('motion-graph');
 
     leftDone = false;
     rightDone = false;
     samples = [];
     lastSampleTime = 0;
+    stopStatusCycle();
     contentEl.classList.remove('verification-complete');
     proceedBtn.disabled = true;
     proceedBtn.textContent = 'Proceed';
+    updateProgress(0);
+    setFeedbackActive(false);
     hideProfile();
-    setStatus(STATUS.ANALYZING, false);
+    drawGraph();
+    setStatus(STATUS_CYCLE[0], false);
     updateSteps();
     updateInstruction();
 
@@ -226,11 +297,15 @@ var motionAuth = (function () {
     rightDone = false;
     samples = [];
     lastSampleTime = 0;
+    stopStatusCycle();
     contentEl.classList.remove('verification-complete');
     proceedBtn.disabled = true;
     proceedBtn.textContent = 'Proceed';
+    updateProgress(0);
+    setFeedbackActive(false);
     hideProfile();
-    setStatus(STATUS.ANALYZING, false);
+    drawGraph();
+    setStatus(STATUS_CYCLE[0], false);
     updateSteps();
     updateInstruction();
   }
