@@ -3,127 +3,53 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gyroscope</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: system-ui, sans-serif;
-      background: #fff;
-      color: #222;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
-    }
-    .card {
-      background: #f8f8f8;
-      border: 1px solid #e0e0e0;
-      border-radius: 12px;
-      padding: 1.5rem 2rem;
-      text-align: center;
-      max-width: 320px;
-      width: 100%;
-    }
-    h1 {
-      margin: 0 0 1rem;
-      font-size: 1.25rem;
-      font-weight: 600;
-    }
-    .value {
-      font-size: 2rem;
-      font-weight: 600;
-      margin: 0.5rem 0;
-    }
-    .value span { font-variant-numeric: tabular-nums; }
-    .label { font-size: 0.875rem; color: #555; margin-bottom: 0.25rem; }
-    .row { margin: 0.75rem 0; }
-    button {
-      margin-top: 1rem;
-      padding: 0.6rem 1.2rem;
-      font-size: 1rem;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      background: #fff;
-      color: #222;
-      cursor: pointer;
-    }
-    button:hover { background: #f0f0f0; }
-    .fallback, .permission-prompt {
-      color: #666;
-      font-size: 0.9rem;
-      margin-top: 0.5rem;
-    }
-    .hidden { display: none; }
-  </style>
+  <title>Ticket Purchase</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="card">
-    <h1>Orientation</h1>
-    <div id="content">
-      <div class="row">
-        <div class="label">Alpha (z)</div>
-        <div class="value"><span id="alpha">—</span>°</div>
-      </div>
-      <div class="row">
-        <div class="label">Beta (x)</div>
-        <div class="value"><span id="beta">—</span>°</div>
-      </div>
-      <div class="row">
-        <div class="label">Gamma (y)</div>
-        <div class="value"><span id="gamma">—</span>°</div>
-      </div>
+  <!-- SCREEN 1: Event Page -->
+  <section id="screen-event" class="card screen active">
+    <h1>Live Event</h1>
+    <p class="subtitle">Limited availability</p>
+    <div class="event-title">Summer Night Concert 2025</div>
+    <div class="event-meta">Sat, Aug 16 · 8:00 PM · Riverside Arena</div>
+    <button id="btn-buy">Buy Tickets</button>
+  </section>
+
+  <!-- SCREEN 2: Queue Page -->
+  <section id="screen-queue" class="card screen">
+    <h1>Please wait</h1>
+    <p class="queue-msg">High demand detected. You are in the queue.</p>
+    <p class="queue-msg">Your spot is reserved. This usually takes a moment.</p>
+    <button id="btn-queue-continue">Continue</button>
+  </section>
+
+  <!-- SCREEN 3: Verification Page -->
+  <section id="screen-verification" class="card screen">
+    <h1>Verify it's you</h1>
+    <p class="subtitle">Tilt your device to continue</p>
+    <div id="verification-content">
+      <div class="instruction" id="instruction">Tilt your phone LEFT</div>
+      <div class="gamma-readout">Gamma: <span id="gamma">—</span>°</div>
       <div id="permission-prompt" class="permission-prompt hidden">
         <button id="permission-btn">Enable motion</button>
       </div>
+      <button id="btn-verification-continue" disabled>Complete verification to continue</button>
     </div>
-    <div id="fallback" class="fallback hidden">
-      Motion sensors are not supported or not available.
+    <div id="verification-fallback" class="hidden">
+      Motion sensors are not supported. Cannot complete verification.
     </div>
-  </div>
+  </section>
 
-  <script>
-    var alphaEl = document.getElementById('alpha');
-    var betaEl = document.getElementById('beta');
-    var gammaEl = document.getElementById('gamma');
-    var fallbackEl = document.getElementById('fallback');
-    var permissionPrompt = document.getElementById('permission-prompt');
-    var content = document.getElementById('content');
+  <!-- SCREEN 4: Confirmation Page -->
+  <section id="screen-confirmation" class="card screen">
+    <h1>Tickets Reserved</h1>
+    <p class="confirmation-msg">Thank you. Your order has been received.</p>
+    <p class="confirmation-msg">Confirmation #8294-1A. A copy has been sent to your email. Present this confirmation at the venue.</p>
+    <button id="btn-start-over">Start over</button>
+  </section>
 
-    function showFallback() {
-      content.classList.add('hidden');
-      fallbackEl.classList.remove('hidden');
-    }
-
-    function update(e) {
-      alphaEl.textContent = e.alpha != null ? Math.round(e.alpha) : '—';
-      betaEl.textContent = e.beta != null ? Math.round(e.beta) : '—';
-      gammaEl.textContent = e.gamma != null ? Math.round(e.gamma) : '—';
-    }
-
-    function startListening() {
-      permissionPrompt.classList.add('hidden');
-      window.addEventListener('deviceorientation', update);
-      update({ alpha: null, beta: null, gamma: null });
-    }
-
-    if (!window.DeviceOrientationEvent) {
-      showFallback();
-    } else if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      permissionPrompt.classList.remove('hidden');
-      document.getElementById('permission-btn').onclick = function () {
-        DeviceOrientationEvent.requestPermission()
-          .then(function (result) {
-            if (result === 'granted') startListening();
-            else showFallback();
-          })
-          .catch(showFallback);
-      };
-    } else {
-      startListening();
-    }
-  </script>
+  <script src="motionAuth.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
