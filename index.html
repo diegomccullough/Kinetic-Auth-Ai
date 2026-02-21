@@ -24,20 +24,52 @@
     <button id="btn-queue-continue">Continue</button>
   </section>
 
-  <!-- SCREEN 3: Verification Page -->
-  <section id="screen-verification" class="card screen">
-    <h1>Verify it's you</h1>
-    <p class="subtitle">Tilt your device to continue</p>
-    <div id="verification-content">
-      <div class="instruction" id="instruction">Tilt your phone LEFT</div>
-      <div class="gamma-readout">Gamma: <span id="gamma">—</span>°</div>
-      <div id="permission-prompt" class="permission-prompt hidden">
-        <button id="permission-btn">Enable motion</button>
+  <!-- SCREEN 3: Verification Page (dark theme, glass card) -->
+  <section id="screen-verification" class="screen verification-screen">
+    <div class="verification-card card-glass">
+      <h1 class="verification-title">Verify it's you</h1>
+      <p class="verification-subtitle">Step-up authentication</p>
+
+      <div id="verification-content">
+        <div class="verification-steps" aria-label="Verification progress">
+          <div class="step" id="step-1" data-step="1">
+            <span class="step-num">1</span>
+            <span class="step-label">Tilt Left</span>
+          </div>
+          <div class="step" id="step-2" data-step="2">
+            <span class="step-num">2</span>
+            <span class="step-label">Tilt Right</span>
+          </div>
+          <div class="step" id="step-3" data-step="3">
+            <span class="step-num">3</span>
+            <span class="step-label">Motion Analysis</span>
+          </div>
+        </div>
+
+        <div class="verification-status" id="verification-status" aria-live="polite">Analyzing motion…</div>
+        <div class="instruction verification-instruction" id="instruction">Tilt your phone LEFT</div>
+        <div class="gamma-readout verification-gamma">Gamma: <span id="gamma">—</span>°</div>
+
+        <div id="motion-profile" class="motion-profile hidden" aria-label="Motion analysis results">
+          <div class="motion-profile-row"><span>Motion Duration</span><span id="profile-duration">—</span></div>
+          <div class="motion-profile-row"><span>Stability Score</span><span id="profile-stability">—</span></div>
+          <div class="motion-profile-row"><span>Human Confidence Score</span><span id="profile-confidence">—</span></div>
+        </div>
+
+        <div id="permission-prompt" class="permission-prompt hidden">
+          <button id="permission-btn" class="btn-primary">Enable motion</button>
+        </div>
+        <button id="btn-verification-continue" class="btn-primary" disabled>Proceed</button>
       </div>
-      <button id="btn-verification-continue" disabled>Complete verification to continue</button>
-    </div>
-    <div id="verification-fallback" class="hidden">
-      Motion sensors are not supported. Cannot complete verification.
+
+      <div class="verification-transparency" aria-label="Privacy and verification notice">
+        <p>Motion data is processed locally on-device. No biometric data is stored or transmitted.</p>
+        <p>Verification triggered due to elevated traffic anomaly.</p>
+      </div>
+
+      <div id="verification-fallback" class="hidden verification-fallback">
+        Motion sensors are not supported. Cannot complete verification.
+      </div>
     </div>
   </section>
 

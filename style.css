@@ -116,3 +116,220 @@ button:disabled {
   margin: 1rem 0;
   line-height: 1.5;
 }
+
+/* ----- Verification screen: dark theme, glass card ----- */
+.verification-screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: linear-gradient(160deg, #0f1419 0%, #1a2332 50%, #0d1117 100%);
+}
+
+.verification-screen.active {
+  display: flex;
+}
+
+.card-glass {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 1.75rem 2rem;
+  max-width: 380px;
+  width: 100%;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.card-glass:has(.verification-complete) {
+  border-color: rgba(72, 187, 120, 0.35);
+  box-shadow: 0 0 0 1px rgba(72, 187, 120, 0.2);
+}
+
+.verification-title {
+  color: #f0f2f5;
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+  letter-spacing: -0.02em;
+}
+
+.verification-subtitle {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Progress steps */
+.verification-steps {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  gap: 0.5rem;
+}
+
+.step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.6rem 0.25rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+.step-num {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.step-label {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.step.active .step-num {
+  color: #1a2332;
+  background: #58a6ff;
+}
+
+.step.active .step-label {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.step.done .step-num {
+  color: #0d1117;
+  background: #3fb950;
+}
+
+.step.done .step-label {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Status message */
+.verification-status {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.75);
+  min-height: 1.5rem;
+  margin-bottom: 1rem;
+  transition: color 0.3s ease;
+}
+
+.verification-status.complete {
+  color: #3fb950;
+  font-weight: 500;
+}
+
+.verification-instruction {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #f0f2f5;
+  margin: 0.5rem 0 0.75rem;
+  min-height: 2rem;
+}
+
+.verification-gamma {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 1rem;
+}
+
+.verification-gamma span {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Motion profile results (shown after verification) */
+.motion-profile {
+  margin: 1rem 0 0.75rem;
+  padding: 0.9rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  transition: opacity 0.25s ease;
+}
+
+.motion-profile-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+}
+
+.motion-profile-row span:first-child {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.motion-profile-row span:last-child {
+  color: #f0f2f5;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.verification-screen .permission-prompt {
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 0.75rem;
+}
+
+.verification-screen .btn-primary {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: #f0f2f5;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+
+.verification-screen .btn-primary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.verification-screen .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.verification-transparency {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.verification-transparency p {
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.verification-transparency p:last-child {
+  margin-bottom: 0;
+}
+
+.verification-fallback {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+}
