@@ -763,3 +763,266 @@ button:disabled {
   color: var(--auth-text-muted);
   font-size: 0.85rem;
 }
+
+/* ========== AUTHENTICATION LAYER (minimal consumer verification overrides) ========== */
+/* Goal: one instruction at a time, calm typography, generous whitespace, no dashboard panels. */
+
+/* Layout + typography */
+.verification-screen {
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.auth-card.card-glass {
+  max-width: min(560px, 92vw);
+  padding: clamp(1.25rem, 4vw, 2.25rem);
+  border-radius: 16px;
+}
+
+.auth-header {
+  margin-bottom: 1.25rem;
+}
+
+.auth-product-title {
+  font-size: clamp(1.6rem, 4.2vw, 2.25rem);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.auth-product-subtitle,
+.auth-traffic-badge,
+.auth-progress-tracker {
+  display: none !important;
+}
+
+/* 3D phone: centered, in-flow, never overlapping content */
+.auth-phone-viz {
+  position: relative;
+  inset: auto;
+  right: auto;
+  left: auto;
+  top: auto;
+  bottom: auto;
+  width: clamp(140px, 34vw, 210px);
+  height: clamp(260px, 56vw, 360px);
+  margin: 0 auto clamp(1rem, 3vw, 1.5rem);
+  transform: translateY(8px);
+  opacity: 0;
+  z-index: 0;
+  transition: opacity 0.35s ease, transform 0.45s ease;
+}
+
+.auth-phone-viz.visible {
+  opacity: 0.92;
+  transform: translateY(0);
+}
+
+.auth-phone-viz.phone-stepup {
+  right: auto;
+  top: auto;
+  left: auto;
+  bottom: auto;
+  width: clamp(120px, 28vw, 190px);
+  height: clamp(220px, 50vw, 320px);
+  opacity: 0.6;
+  transform: translateY(0);
+}
+
+.auth-phone-viz.phone-confirmation {
+  opacity: 0.3;
+  transform: translateY(-4px);
+}
+
+.auth-phone-mockup {
+  width: 72%;
+  height: 78%;
+  border-radius: 18px;
+}
+
+@media (max-width: 480px) {
+  .auth-phone-viz {
+    width: clamp(130px, 44vw, 180px);
+    height: clamp(240px, 76vw, 320px);
+    margin-bottom: 0.75rem;
+  }
+}
+
+/* Motion panel: keep only progress + primary instruction (+ permission button if needed) */
+.verification-steps,
+.verification-status-panel,
+.motion-graph-wrap,
+.verification-gamma,
+#btn-verification-continue {
+  display: none !important;
+}
+
+.verification-progress {
+  height: 2px;
+  border-radius: 999px;
+  margin-bottom: 1.5rem;
+}
+
+.verification-progress-fill {
+  border-radius: 999px;
+}
+
+.verification-instruction {
+  font-size: clamp(1.5rem, 4.5vw, 2.1rem);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0.25rem 0 0.25rem;
+  min-height: 3.25rem;
+}
+
+#permission-prompt {
+  margin-top: 1rem;
+}
+
+#permission-prompt.hidden {
+  display: none !important;
+}
+
+/* Analysis interstitial: subtle, controlled */
+.verification-screen.is-analysis .verification-progress-fill {
+  background: linear-gradient(90deg, var(--auth-accent), rgba(255, 255, 255, 0.25));
+}
+
+/* Step-up: minimal message + centered mic */
+#auth-stepup-panel .auth-panel-title {
+  font-size: clamp(1.25rem, 3.8vw, 1.65rem);
+  font-weight: 650;
+  margin: 0.5rem 0 1rem;
+  text-align: center;
+}
+
+#auth-stepup-panel .auth-stepup-instruction,
+#auth-stepup-panel .auth-phrase,
+#auth-stepup-panel .auth-stepup-note,
+#auth-stepup-panel #auth-stepup-status {
+  display: none !important;
+}
+
+.auth-mic-visual {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.12) inset;
+}
+
+@keyframes authMicPulse {
+  0%, 100% { transform: scale(1); opacity: 0.95; }
+  50% { transform: scale(1.035); opacity: 1; }
+}
+
+#auth-stepup-panel .auth-mic-visual {
+  animation: authMicPulse 1.8s ease-in-out infinite;
+}
+
+/* Confirmation: big checkmark + calm copy */
+#auth-confirmation-panel {
+  text-align: center;
+}
+
+#auth-final-trust {
+  display: none !important;
+}
+
+.auth-checkmark {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1rem;
+  border-radius: 999px;
+  background: rgba(63, 185, 80, 0.12);
+  border: 1px solid rgba(63, 185, 80, 0.28);
+  position: relative;
+}
+
+.auth-checkmark::after {
+  content: "";
+  position: absolute;
+  left: 20px;
+  top: 32px;
+  width: 22px;
+  height: 12px;
+  border-left: 4px solid var(--auth-success);
+  border-bottom: 4px solid var(--auth-success);
+  transform: rotate(-45deg);
+  border-radius: 2px;
+}
+
+.auth-verified-title {
+  font-size: clamp(1.5rem, 4.6vw, 2.15rem);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0 0 1.25rem;
+}
+
+.auth-verified-subtext {
+  display: none !important;
+}
+
+/* Hide old Proceed button in metrics panel */
+#btn-verification-proceed {
+  display: none !important;
+}
+
+/* Technical Details disclosure (hidden by default) */
+.auth-tech-details {
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--auth-border);
+}
+
+.auth-tech-details > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.8rem;
+  color: var(--auth-text-muted);
+  padding: 0.25rem 0;
+}
+
+.auth-tech-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.auth-tech-details > summary::after {
+  content: "Show";
+  float: right;
+  color: var(--auth-text-muted);
+}
+
+.auth-tech-details[open] > summary::after {
+  content: "Hide";
+}
+
+.auth-tech-details-body {
+  padding-top: 0.75rem;
+}
+
+.auth-tech-details .auth-panel-title {
+  font-size: 0.85rem;
+  color: var(--auth-text);
+  margin-bottom: 0.5rem;
+}
+
+.auth-tech-details .auth-panel {
+  display: block;
+  transform: none;
+  opacity: 1;
+}
+
+.auth-tech-details .btn-primary {
+  display: none !important;
+}
+
+/* Make transparency footer quieter */
+.auth-transparency p {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.5);
+}

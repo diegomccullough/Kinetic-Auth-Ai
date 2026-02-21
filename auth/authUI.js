@@ -5,7 +5,7 @@
  */
 
 /** When true: larger phone viz, amplified rotation, stronger glow, bigger text for live projection demo. */
-var DEMO_MODE = true;
+var DEMO_MODE = false;
 
 var authUI = (function () {
   var trafficBadgeEl, motionPanel, behavioralPanel, riskPanel, stepupPanel, confirmationPanel;
@@ -13,6 +13,11 @@ var authUI = (function () {
   var trustLevelEl, explanationEl, finalTrustEl;
   var riskSurgeEl, riskScoreEl, riskReasonEl, stepupRequiredEl;
   var phoneVizEl;
+  var screenEl, headerTitleEl, headerSubtitleEl;
+  var instructionEl;
+  var analysisTimer = null;
+  var techDetailsEl = null;
+  var flowState = 'idle';
   var currentStep = 1;
 
   var TRAFFIC_LEVELS = ['Low', 'Medium', 'High'];
@@ -36,8 +41,6 @@ var authUI = (function () {
 
   function showPanel(panel) {
     if (motionPanel) motionPanel.classList.add('hidden');
-    if (behavioralPanel) behavioralPanel.classList.add('hidden');
-    if (riskPanel) riskPanel.classList.add('hidden');
     if (stepupPanel) stepupPanel.classList.add('hidden');
     if (confirmationPanel) confirmationPanel.classList.add('hidden');
     if (panel) panel.classList.remove('hidden');
@@ -82,56 +85,179 @@ var authUI = (function () {
     if (stepupRequiredEl) stepupRequiredEl.textContent = stepUpRequired ? 'Yes' : 'No';
   }
 
-  function showConfirmationView(trustScore) {
-    if (finalTrustEl) finalTrustEl.textContent = (trustScore != null ? trustScore : 0) + '%';
+  function showConfirmationView() {
+    if (finalTrustEl) finalTrustEl.textContent = '';
     setProgressStep(5);
+    setPhoneVizState('visible');
     if (phoneVizEl) phoneVizEl.classList.add('phone-confirmation');
     showPanel(confirmationPanel);
   }
 
+  function setHeaderCopy() {
+    if (headerTitleEl) headerTitleEl.textContent = 'Verify your access';
+    if (headerSubtitleEl) headerSubtitleEl.textContent = '';
+  }
+
+  function setPrimaryInstruction(text) {
+    if (!instructionEl) instructionEl = get('instruction');
+    if (instructionEl) instructionEl.textContent = text;
+  }
+
+  function clearTimers() {
+    if (analysisTimer) {
+      clearTimeout(analysisTimer);
+      analysisTimer = null;
+    }
+  }
+
+  function ensureTechnicalDetailsPanel() {
+    if (techDetailsEl || !screenEl) return;
+
+    // Create disclosure container (hidden by default via <details>).
+    var details = document.createElement('details');
+    details.className = 'auth-tech-details';
+    details.id = 'auth-tech-details';
+    var summary = document.createElement('summary');
+    summary.textContent = 'Technical Details';
+    var body = document.createElement('div');
+    body.className = 'auth-tech-details-body';
+    details.appendChild(summary);
+    details.appendChild(body);
+
+    // Move existing metrics panels into disclosure.
+    if (behavioralPanel) {
+      behavioralPanel.classList.remove('hidden');
+      body.appendChild(behavioralPanel);
+    }
+    if (riskPanel) {
+      riskPanel.classList.remove('hidden');
+      body.appendChild(riskPanel);
+    }
+
+    // Insert above the transparency footer.
+    var footer = screenEl.querySelector('.auth-transparency');
+    if (footer && footer.parentNode) footer.parentNode.insertBefore(details, footer);
+    else screenEl.appendChild(details);
+
+    techDetailsEl = details;
+  }
+
+  function configureStepUpCopy() {
+    if (!stepupPanel) return;
+    var title = stepupPanel.querySelector('.auth-panel-title');
+    if (title) title.textContent = 'Additional verification required';
+    var instruction = stepupPanel.querySelector('.auth-stepup-instruction');
+    if (instruction) instruction.textContent = '';
+    var phrase = get('auth-stepup-phrase');
+    if (phrase) phrase.textContent = '';
+    var status = get('auth-stepup-status');
+    if (status) status.textContent = '';
+  }
+
+  function configureConfirmationCopy() {
+    if (!confirmationPanel) return;
+    var title = confirmationPanel.querySelector('.auth-verified-title');
+    if (title) title.textContent = 'You\u2019re verified';
+    var subtext = confirmationPanel.querySelector('.auth-verified-subtext');
+    if (subtext) subtext.textContent = '';
+    if (!confirmationPanel.querySelector('.auth-checkmark')) {
+      var mark = document.createElement('div');
+      mark.className = 'auth-checkmark';
+      confirmationPanel.insertBefore(mark, confirmationPanel.firstChild);
+    }
+  }
+
   function onMotionPhase(e) {
     var p = e.detail && e.detail.phase;
-    if (p === 'capturing') setPhoneVizState('visible');
-    else if (p === 'left_done') setPhoneVizState('tilt-left');
-    else if (p === 'analysis') {
-      setPhoneVizState('tilt-right');
-      setTimeout(function () { setPhoneVizState('analysis'); }, 350);
+    if (p === 'capturing') {
+      flowState = 'motion_left';
+      setProgressStep(1);
+      setPhoneVizState('visible');
+      setPrimaryInstruction('Tilt your phone left');
+      if (screenEl) screenEl.classList.remove('is-analysis');
+    } else if (p === 'left_done') {
+      flowState = 'motion_right';
+      setProgressStep(1);
+      setPhoneVizState('tilt-left');
+      setPrimaryInstruction('Tilt your phone right');
+      if (screenEl) screenEl.classList.remove('is-analysis');
+    } else if (p === 'analysis') {
+      flowState = 'analysis';
+      setProgressStep(2);
+      setPhoneVizState('analysis');
+      setPrimaryInstruction('Verifying motion\u2026');
+      if (screenEl) screenEl.classList.add('is-analysis');
     }
   }
 
   function onMotionComplete(e) {
     var analysis = e.detail && e.detail.analysis;
+    clearTimers();
+
+    ensureTechnicalDetailsPanel();
     renderBehavioral(analysis);
-    renderRiskContext('High', analysis ? 100 - (analysis.humanConfidence || 0) : 28, false);
-    setProgressStep(3);
-    showPanel(null);
-    if (behavioralPanel) behavioralPanel.classList.remove('hidden');
-    if (riskPanel) riskPanel.classList.remove('hidden');
+    var riskScore = analysis ? 100 - (analysis.humanConfidence || 0) : 28;
+    var stepUpRequired = false;
+    renderRiskContext('High', riskScore, stepUpRequired);
+
+    // Keep the main UI calm: show a controlled analysis interstitial, then advance automatically.
+    flowState = 'analysis';
+    setProgressStep(2);
+    showPanel(motionPanel);
+    setPhoneVizState('analysis');
+    setPrimaryInstruction('Verifying motion\u2026');
+    if (screenEl) screenEl.classList.add('is-analysis');
+
+    analysisTimer = setTimeout(function () {
+      clearTimers();
+      if (stepUpRequired) {
+        flowState = 'stepup';
+        setProgressStep(4);
+        configureStepUpCopy();
+        showPanel(stepupPanel);
+        setPhoneVizState('visible');
+        if (screenEl) screenEl.classList.remove('is-analysis');
+      } else {
+        flowState = 'confirmed';
+        configureConfirmationCopy();
+        if (screenEl) screenEl.classList.remove('is-analysis');
+        showConfirmationView();
+      }
+    }, 1500);
   }
 
-  function onProceedClick() {
-    var score = motionAuth.isVerified() ? (get('profile-confidence') && get('profile-confidence').textContent) : 0;
-    score = score ? parseInt(score.replace('%', ''), 10) : 0;
-    showConfirmationView(score);
-  }
+  function onProceedClick() { /* deprecated in minimal flow */ }
 
   function start() {
+    clearTimers();
     setTrafficBadge('High');
     setProgressStep(1);
     setPhoneVizState('hidden');
-    var screenEl = get('screen-verification');
-    if (screenEl) screenEl.classList.toggle('demo-mode', DEMO_MODE);
+    if (screenEl) {
+      screenEl.classList.toggle('demo-mode', DEMO_MODE);
+      screenEl.classList.remove('is-analysis');
+    }
+    setHeaderCopy();
+    configureStepUpCopy();
+    configureConfirmationCopy();
+    ensureTechnicalDetailsPanel();
     showPanel(motionPanel);
+    flowState = 'motion_left';
+    setPrimaryInstruction('Tilt your phone left');
     motionAuth.init({ demoMode: DEMO_MODE });
     voiceAuth.init();
   }
 
   function reset() {
+    clearTimers();
     setProgressStep(1);
     setPhoneVizState('hidden');
-    var screenEl = get('screen-verification');
-    if (screenEl) screenEl.classList.remove('demo-mode');
+    if (screenEl) {
+      screenEl.classList.remove('demo-mode');
+      screenEl.classList.remove('is-analysis');
+    }
     showPanel(motionPanel);
+    flowState = 'idle';
     motionAuth.reset();
     voiceAuth.reset();
   }
@@ -141,6 +267,7 @@ var authUI = (function () {
   }
 
   function init() {
+    screenEl = get('screen-verification');
     trafficBadgeEl = get('auth-traffic-badge');
     motionPanel = get('auth-motion-panel');
     behavioralPanel = get('auth-behavioral-panel');
@@ -154,6 +281,9 @@ var authUI = (function () {
     riskScoreEl = get('auth-risk-score');
     riskReasonEl = get('auth-risk-reason');
     stepupRequiredEl = get('auth-stepup-required');
+    headerTitleEl = screenEl ? screenEl.querySelector('.auth-product-title') : null;
+    headerSubtitleEl = screenEl ? screenEl.querySelector('.auth-product-subtitle') : null;
+    instructionEl = get('instruction');
 
     for (var i = 1; i <= 5; i++) {
       var stepEl = get('auth-step-' + i);
