@@ -29,6 +29,15 @@ var motionAuth = (function () {
   var STATUS_CYCLE_MS = 2200;
   var GRAPH_MAX_POINTS = 80;
   var GAMMA_RANGE = 90;
+  var phoneMockupEl = null;
+  var phase = 'idle';
+  var rafScheduled = false;
+  var latestBeta = 0;
+  var latestGamma = 0;
+  var ROTATION_CLAMP = 25;
+  var ROTATION_CLAMP_DEMO = 30;
+  var ROTATION_AMPLIFY_DEMO = 1.4;
+  var demoMode = false;
 
   var STATUS_CYCLE = [
     'Capturing motion data…',
@@ -124,7 +133,7 @@ var motionAuth = (function () {
 
   function analyzeProfile() {
     if (samples.length < 2) {
-      return { durationSec: 0, stabilityScore: 0, humanConfidence: 0 };
+      return { durationSec: 0, sampleRate: 0, stabilityScore: 0, jerkCount: 0, jerkResult: 'None', humanConfidence: 0 };
     }
     var first = samples[0];
     var last = samples[samples.length - 1];
@@ -145,18 +154,27 @@ var motionAuth = (function () {
     if (durationSec >= 0.8 && durationSec <= 20) durationBonus = 10;
     else if (durationSec < 0.3) durationBonus = -30;
     var humanConfidence = Math.max(0, Math.min(100, Math.round(stabilityScore + durationBonus)));
+    var sampleRate = durationSec > 0 ? (samples.length - 1) / durationSec : 0;
+    var jerkResult = jumpCount === 0 ? 'None' : jumpCount <= 2 ? 'Low' : 'Detected';
     return {
       durationSec: durationSec,
+      sampleRate: sampleRate,
       stabilityScore: stabilityScore,
+      jerkCount: jumpCount,
+      jerkResult: jerkResult,
       humanConfidence: humanConfidence
     };
   }
+
+  var profileSampleRateEl, profileJerkEl;
 
   function showProfileResults(result) {
     if (!profileEl) return;
     if (profileDurationEl) profileDurationEl.textContent = result.durationSec.toFixed(1) + ' s';
     if (profileStabilityEl) profileStabilityEl.textContent = result.stabilityScore + '%';
     if (profileConfidenceEl) profileConfidenceEl.textContent = result.humanConfidence + '%';
+    if (profileSampleRateEl) profileSampleRateEl.textContent = (result.sampleRate || 0).toFixed(1) + ' Hz';
+    if (profileJerkEl) profileJerkEl.textContent = result.jerkResult || 'None';
     profileEl.classList.remove('hidden');
   }
 
@@ -166,10 +184,18 @@ var motionAuth = (function () {
     if (profileDurationEl) profileDurationEl.textContent = '—';
     if (profileStabilityEl) profileStabilityEl.textContent = '—';
     if (profileConfidenceEl) profileConfidenceEl.textContent = '—';
+    if (profileSampleRateEl) profileSampleRateEl.textContent = '—';
+    if (profileJerkEl) profileJerkEl.textContent = '—';
   }
 
   function updateInstruction() {
     if (leftDone && rightDone) {
+      phase = 'analysis';
+      if (phoneMockupEl) {
+        phoneMockupEl.style.setProperty('--phone-rotate-x', '0deg');
+        phoneMockupEl.style.setProperty('--phone-rotate-y', '0deg');
+      }
+      document.dispatchEvent(new CustomEvent('MOTION_PHASE', { detail: { phase: 'analysis' } }));
       stopStatusCycle();
       updateProgress(100);
       setFeedbackActive(false);
@@ -179,10 +205,9 @@ var motionAuth = (function () {
       proceedBtn.disabled = false;
       proceedBtn.textContent = 'Proceed';
       onVerified();
-      document.dispatchEvent(new CustomEvent('MOTION_COMPLETE', { detail: { verified: true } }));
-
       var result = analyzeProfile();
       showProfileResults(result);
+      document.dispatchEvent(new CustomEvent('MOTION_COMPLETE', { detail: { verified: true, analysis: result } }));
     } else if (leftDone) {
       updateProgress(33);
       instructionEl.textContent = 'Tilt your phone RIGHT';
@@ -194,18 +219,43 @@ var motionAuth = (function () {
     }
   }
 
+  function dispatchPhase(p) {
+    phase = p;
+    document.dispatchEvent(new CustomEvent('MOTION_PHASE', { detail: { phase: p } }));
+  }
+
+  function updatePhoneRotation() {
+    rafScheduled = false;
+    if (!phoneMockupEl || (phase !== 'capturing' && phase !== 'left_done')) return;
+    var cap = demoMode ? ROTATION_CLAMP_DEMO : ROTATION_CLAMP;
+    var mult = demoMode ? ROTATION_AMPLIFY_DEMO : 1;
+    var rawX = (latestBeta != null ? latestBeta : 0) * mult;
+    var rawY = (latestGamma != null ? latestGamma : 0) * mult;
+    var x = Math.max(-cap, Math.min(cap, rawX));
+    var y = Math.max(-cap, Math.min(cap, rawY));
+    phoneMockupEl.style.setProperty('--phone-rotate-x', x + 'deg');
+    phoneMockupEl.style.setProperty('--phone-rotate-y', y + 'deg');
+  }
+
   function onOrientation(e) {
     var gamma = e.gamma;
     var beta = e.beta;
+    latestBeta = beta;
+    latestGamma = gamma;
     if (gammaEl) gammaEl.textContent = gamma != null ? Math.round(gamma) : '—';
     if (gamma != null) {
       setFeedbackActive(true);
       recordSample(gamma, beta);
       drawGraph();
+      if (phoneMockupEl && !rafScheduled) {
+        rafScheduled = true;
+        requestAnimationFrame(updatePhoneRotation);
+      }
     }
     if (gamma == null) return;
     if (!leftDone && gamma < -20) {
       leftDone = true;
+      dispatchPhase('left_done');
       setStatus(STATUS_CYCLE[1], false);
       updateSteps();
     }
@@ -225,6 +275,7 @@ var motionAuth = (function () {
     setFeedbackActive(false);
     drawGraph();
     startStatusCycle();
+    dispatchPhase('capturing');
     if (!listenerBound) {
       window.addEventListener('deviceorientation', onOrientation);
       listenerBound = true;
@@ -237,6 +288,7 @@ var motionAuth = (function () {
   function init(options) {
     options = options || {};
     onVerified = options.onVerified || function () {};
+    demoMode = !!options.demoMode;
 
     instructionEl = document.getElementById('instruction');
     gammaEl = document.getElementById('gamma');
@@ -252,10 +304,13 @@ var motionAuth = (function () {
     profileDurationEl = document.getElementById('profile-duration');
     profileStabilityEl = document.getElementById('profile-stability');
     profileConfidenceEl = document.getElementById('profile-confidence');
+    profileSampleRateEl = document.getElementById('profile-sample-rate');
+    profileJerkEl = document.getElementById('profile-jerk');
     progressFillEl = document.getElementById('verification-progress-fill');
     progressTrackEl = progressFillEl ? progressFillEl.parentElement : null;
     feedbackEl = document.getElementById('motion-feedback');
     graphCanvas = document.getElementById('motion-graph');
+    phoneMockupEl = document.getElementById('auth-phone-mockup');
 
     leftDone = false;
     rightDone = false;
@@ -293,10 +348,15 @@ var motionAuth = (function () {
   }
 
   function reset() {
+    phase = 'idle';
     leftDone = false;
     rightDone = false;
     samples = [];
     lastSampleTime = 0;
+    if (phoneMockupEl) {
+      phoneMockupEl.style.setProperty('--phone-rotate-x', '0deg');
+      phoneMockupEl.style.setProperty('--phone-rotate-y', '0deg');
+    }
     stopStatusCycle();
     contentEl.classList.remove('verification-complete');
     proceedBtn.disabled = true;

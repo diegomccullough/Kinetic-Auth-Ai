@@ -15,6 +15,7 @@ function init() {
   landing.init();
   queue.init();
   aiReasoning.init();
+  authUI.init();
 
   // Ticketing: Buy -> show queue, start surge
   document.getElementById('btn-buy').onclick = function () {
@@ -35,9 +36,9 @@ function init() {
     authUI.start();
   };
 
-  // Auth completion: Proceed -> route to confirmation
-  document.getElementById('btn-verification-continue').onclick = function () {
-    if (authUI.isVerified()) showScreen('screen-confirmation');
+  // Auth: final Continue (from confirmation view) -> ticket confirmation screen
+  document.getElementById('btn-auth-continue').onclick = function () {
+    showScreen('screen-confirmation');
   };
 
   // Start over: cancel surge, reset auth, back to event
