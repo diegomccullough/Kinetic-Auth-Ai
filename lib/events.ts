@@ -151,7 +151,7 @@ export const EVENTS: Event[] = [
     tag: "On Sale Now",
     sections: arenaFloorSections,
     songs: [
-      { title: "For Certain", artist: "PARTYNEXTDOOR", bpm: 95, youtubeId: "4NRXx6U8ABQ" },
+      { title: "For Certain", artist: "PARTYNEXTDOOR", bpm: 95, youtubeId: "4NRXx6U8ABQ", audioSrc: "/music/partynextdoor.mp3" },
     ],
   },
   {
@@ -193,7 +193,7 @@ export const EVENTS: Event[] = [
     tag: "Limited Seats",
     sections: arenaFloorSections,
     songs: [
-      { title: "Skyfall", artist: "Adele", bpm: 68, youtubeId: "DeumyOzKqgI" },
+      { title: "Skyfall", artist: "Adele", bpm: 68, youtubeId: "DeumyOzKqgI", audioSrc: "/music/adele.mp3" },
     ],
   },
   {

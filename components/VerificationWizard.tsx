@@ -54,31 +54,17 @@ const DEMO_RISK_PAYLOAD = {
 function TrustChip({
   risk,
   loading,
-  onDebugClick,
 }: {
   risk: RiskResult | null;
   loading: boolean;
-  onDebugClick: () => void;
 }) {
   const label = risk ? risk.risk_level.charAt(0).toUpperCase() + risk.risk_level.slice(1) : "…";
   const color = risk ? RISK_COLOR[risk.risk_level] : "#475569";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-      <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#94a3b8" }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: loading ? "#475569" : color, flexShrink: 0 }} />
-        Trust: {loading ? "…" : label}
-      </span>
-      <button
-        type="button"
-        onClick={onDebugClick}
-        style={{
-          fontSize: 10, color: "#64748b", background: "none", border: "none", cursor: "pointer",
-          textDecoration: "underline", padding: 0,
-        }}
-      >
-        Debug
-      </button>
-    </div>
+    <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#94a3b8" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: loading ? "#475569" : color, flexShrink: 0 }} />
+      Trust: {loading ? "…" : label}
+    </span>
   );
 }
 
@@ -496,8 +482,13 @@ function BeatChallenge({
     audio.loop = true;
     const played = audio.play();
     if (typeof played?.then === "function") {
-      played.catch(() => { /* autoplay blocked or file missing */ });
+      played.catch((err) => {
+        console.error(`[BeatChallenge] Failed to play audio "${song.audioSrc}":`, err.message);
+      });
     }
+    audio.onerror = () => {
+      console.error(`[BeatChallenge] Audio file not found or cannot be played: "${song.audioSrc}"`);
+    };
 
     return () => {
       audio.pause();
@@ -736,7 +727,6 @@ function TiltChallenge({
   voiceLoading,
   voiceText,
   onNarrate,
-  onDebugClick,
   onSuccess,
   onFailure,
 }: {
@@ -751,7 +741,6 @@ function TiltChallenge({
   voiceLoading: boolean;
   voiceText: string | null;
   onNarrate: () => Promise<void>;
-  onDebugClick: () => void;
   onSuccess: (score: ScoreBreakdown) => void;
   onFailure: (accumulated: TiltAccumulatedData) => void;
 }) {
@@ -942,7 +931,7 @@ function TiltChallenge({
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
           <div className="flex items-center gap-3">
-            <TrustChip risk={risk} loading={riskLoading} onDebugClick={onDebugClick} />
+            <TrustChip risk={risk} loading={riskLoading} />
             <p className="text-[10px] font-medium text-slate-500">Step {completedCount + 1} of 3</p>
           </div>
         </div>
@@ -1145,7 +1134,6 @@ export default function VerificationWizard({
   const tiltFailCountRef = useRef(0);
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [voiceText, setVoiceText] = useState<string | null>(null);
-  const [debugOpen, setDebugOpen] = useState(false);
 
   const [trace, setTrace] = useState<VerificationTrace>({
     lastRiskRequest: null,
@@ -1231,7 +1219,6 @@ export default function VerificationWizard({
     scoreHumanConfidence({ motionSamples: [], directedTimings: undefined, stabilityPct: 0, stabilityHoldPct: 0 })
   );
 
-<<<<<<< HEAD
   const cueLine = useMemo(() => {
     if (screen !== "tasks") return "";
     if (taskId === "left") return "Tilt your phone left until the ring fills…";
@@ -1261,8 +1248,6 @@ export default function VerificationWizard({
     return true;
   }, [pickSong]);
 
-=======
->>>>>>> d5939e4370a97249bcb0f549cce6f08e6cc44e15
   const finish = useCallback((score: ScoreBreakdown) => {
     setCurrentStep("complete");
     setFinalScore(score);
@@ -1352,15 +1337,6 @@ export default function VerificationWizard({
 
   return (
     <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
-      <DebugDrawer
-        currentStep={debugStepLabel}
-        tiltFailCount={tiltFailCount}
-        risk={risk}
-        trace={trace}
-        open={debugOpen}
-        onOpen={() => setDebugOpen(true)}
-        onClose={() => setDebugOpen(false)}
-      />
       <AnimatePresence mode="popLayout" initial={false}>
 
         {/* ═══════════════════════════════════════════════════════════
@@ -1450,7 +1426,7 @@ export default function VerificationWizard({
 
             {/* Trust chip + Debug */}
             <div style={{ position: "relative", zIndex: 1, width: "min(320px, 90vw)" }}>
-              <TrustChip risk={risk} loading={riskLoading} onDebugClick={() => setDebugOpen(true)} />
+              <TrustChip risk={risk} loading={riskLoading} />
             </div>
 
             <div
@@ -1553,171 +1529,11 @@ export default function VerificationWizard({
             voiceLoading={voiceLoading}
             voiceText={voiceText}
             onNarrate={handleNarrate}
-            onDebugClick={() => setDebugOpen(true)}
             onSuccess={handleTiltSuccess}
             onFailure={handleTiltFailure}
           />
         ) : null}
 
-<<<<<<< HEAD
-              <div className="mt-4 space-y-1">
-                <AnimatePresence mode="popLayout" initial={false}>
-                  <motion.p
-                    key={stepTitle}
-                    className="text-xl font-semibold tracking-tight text-white"
-                    initial={reduceMotion ? false : { y: 8, opacity: 0 }}
-                    animate={reduceMotion ? undefined : { y: 0, opacity: 1 }}
-                    exit={reduceMotion ? undefined : { y: -8, opacity: 0 }}
-                    transition={reduceMotion ? undefined : { type: "spring", stiffness: 280, damping: 26, mass: 0.5 }}
-                  >
-                    {stepTitle}
-                  </motion.p>
-                </AnimatePresence>
-                <AnimatePresence mode="popLayout" initial={false}>
-                  <motion.p
-                    key={cueLine}
-                    className="text-sm text-slate-400"
-                    initial={reduceMotion ? false : { opacity: 0, y: 4 }}
-                    animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                    exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
-                    transition={reduceMotion ? undefined : { type: "spring", stiffness: 260, damping: 26 }}
-                  >
-                    {cueLine}
-                  </motion.p>
-                </AnimatePresence>
-              </div>
-
-              <div
-                className={[
-                  "relative mt-6 w-full overflow-hidden rounded-2xl border",
-                  inside && taskId === "steady"
-                    ? "border-emerald-700/40 bg-slate-800/60"
-                    : "border-slate-700/50 bg-slate-800/60"
-                ].join(" ")}
-                style={{ height: "52dvh", minHeight: 320, maxHeight: 480 }}
-              >
-                <div className="relative grid h-full place-items-center p-6">
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    {taskId === "left" || taskId === "right" ? (
-                      <motion.div
-                        key={taskId}
-                        className="flex w-full flex-col items-center gap-8"
-                        initial={reduceMotion ? false : { opacity: 0 }}
-                        animate={reduceMotion ? undefined : { opacity: 1 }}
-                        exit={reduceMotion ? undefined : { opacity: 0 }}
-                        transition={reduceMotion ? undefined : { duration: 0.2 }}
-                      >
-                        <div className="relative grid place-items-center">
-                          <div className="relative h-[180px] w-[180px]">
-                            <HoldRing pct01={holdPct} radius={70} strokeWidth={8} color="rgba(96,165,250,0.9)" />
-                            <div className="absolute inset-0 grid place-items-center">
-                              <ArrowGlyph direction={taskId} />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="w-full px-4 space-y-1.5">
-                          <div className="flex justify-between text-[11px] text-slate-500">
-                            <span>← Left</span>
-                            <span>Right →</span>
-                          </div>
-                          <div className="relative h-2 w-full rounded-full bg-slate-700">
-                            <div className="absolute inset-y-0 left-1/2 w-px bg-slate-600" />
-                            <motion.div
-                              className="absolute inset-y-0 w-3 -translate-x-1/2 rounded-full bg-blue-400"
-                              style={{ left: `${50 + clamp(smoothedGamma, -28, 28) * (50 / 28)}%` }}
-                            />
-                          </div>
-                        </div>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="steady"
-                        className="flex w-full flex-col items-center gap-8"
-                        initial={reduceMotion ? false : { opacity: 0 }}
-                        animate={reduceMotion ? undefined : { opacity: 1 }}
-                        exit={reduceMotion ? undefined : { opacity: 0 }}
-                        transition={reduceMotion ? undefined : { duration: 0.2 }}
-                      >
-                        <div className="relative grid place-items-center">
-                          <div className="relative h-[180px] w-[180px]">
-                            <HoldRing pct01={holdPct} color={inside ? "rgba(52,211,153,0.9)" : "rgba(148,163,184,0.5)"} radius={74} strokeWidth={8} />
-                            <div className="absolute inset-0 grid place-items-center">
-                              <div className="relative h-[86%] w-[86%]">
-                                <div
-                                  className={[
-                                    "absolute left-1/2 top-1/2 h-[96px] w-[96px] -translate-x-1/2 -translate-y-1/2 rounded-full border",
-                                    inside ? "border-emerald-500/40" : "border-slate-600/50"
-                                  ].join(" ")}
-                                  aria-hidden="true"
-                                />
-                                <motion.div
-                                  className={[
-                                    "absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full",
-                                    inside ? "bg-emerald-400" : "bg-blue-400"
-                                  ].join(" ")}
-                                  animate={{ x: dot.x, y: dot.y, scale: inside ? 1.1 : 1 }}
-                                  transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.25 }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Outside timer warning */}
-                        {!inside && outsideSecsRemaining !== null && outsideSecsRemaining <= GYRO_FAIL_SECONDS && songs && songs.length > 0 && (
-                          <motion.p
-                            key={outsideSecsRemaining}
-                            className="text-xs font-semibold text-amber-400"
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                          >
-                            {outsideSecsRemaining > 1
-                              ? `Tilt the ball into the circle — beat challenge in ${outsideSecsRemaining}s`
-                              : "Beat challenge starting…"}
-                          </motion.p>
-                        )}
-
-                        <div className="w-full px-4 space-y-1.5">
-                          <div className="flex justify-between text-[11px] text-slate-500">
-                            <span>Ball in circle</span>
-                            <span>{inside ? "Holding…" : "Tilt the ball into the circle"}</span>
-                          </div>
-                          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-700">
-                            <motion.div
-                              className={["h-full rounded-full", inside ? "bg-emerald-500" : "bg-slate-600"].join(" ")}
-                              animate={{ width: `${holdPct * 100}%` }}
-                              transition={{ type: "spring", stiffness: 240, damping: 28, mass: 0.55 }}
-                            />
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-
-              <div className="mt-6 space-y-2">
-                <div className="flex justify-between text-[11px] text-slate-500">
-                  <span>Overall progress</span>
-                  <span>{Math.round(overallProgressPct)}%</span>
-                </div>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-                  <motion.div
-                    className="h-full rounded-full bg-blue-500"
-                    initial={false}
-                    animate={{ width: `${overallProgressPct}%` }}
-                    transition={{ type: "spring", stiffness: 240, damping: 28, mass: 0.55 }}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <Stepper completed={completedCount} />
-              </div>
-
-              <div className="mt-4">
-=======
         {/* ═══════════════════════════════════════════════════════════
             SCREEN 2b — BEAT CHALLENGE (only when tilt failed + risk high)
         ═══════════════════════════════════════════════════════════ */}
@@ -1731,7 +1547,6 @@ export default function VerificationWizard({
                 reduceMotion={reduceMotion}
               />
               <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", width: "min(320px, 90vw)", zIndex: 100 }}>
->>>>>>> d5939e4370a97249bcb0f549cce6f08e6cc44e15
                 <VoiceGuidanceButton
                   step="beat"
                   riskLevel={risk?.risk_level ?? "medium"}
