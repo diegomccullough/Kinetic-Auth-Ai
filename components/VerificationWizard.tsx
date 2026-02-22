@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { scoreHumanConfidence, type MotionSample, type ScoreBreakdown } from "@/lib/scoring";
 import { useDeviceOrientation } from "@/lib/useDeviceOrientation";
 import PhoneTiltPreview from "@/components/PhoneTiltPreview";
+import type { EventSong } from "@/lib/events";
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -30,7 +31,19 @@ const DOT_CLAMP_DEG = 28;
 const DOT_MAX_OFFSET_PX = 98;
 const DOT_PX_PER_DEG = DOT_MAX_OFFSET_PX / DOT_CLAMP_DEG;
 
-type Screen = "intro" | "tasks" | "result";
+/** Seconds ball must stay outside circle before beat challenge triggers */
+const GYRO_FAIL_SECONDS = 6;
+
+/** Minimum shake magnitude (accel delta) to count as a beat hit */
+const SHAKE_THRESHOLD = 12;
+
+/** Beat window tolerance in ms either side of the beat */
+const BEAT_WINDOW_MS = 220;
+
+/** Number of beats the user must hit to pass the beat challenge */
+const BEATS_REQUIRED = 8;
+
+type Screen = "intro" | "tasks" | "beat" | "result";
 type TaskId = "left" | "right" | "steady";
 
 function ringDashOffset(radius: number, pct: number) {
@@ -45,13 +58,11 @@ function Stepper({ completed }: { completed: number }) {
 
   return (
     <div className="relative px-1 pt-2 pb-1">
-      {/* Track */}
       <div
         className="absolute top-1/2 -translate-y-1/2 h-px bg-slate-700"
         style={{ left: 20, right: 20 }}
         aria-hidden="true"
       />
-      {/* Fill */}
       <motion.div
         className="absolute top-1/2 -translate-y-1/2 h-px bg-blue-500"
         initial={false}
@@ -60,7 +71,6 @@ function Stepper({ completed }: { completed: number }) {
         style={{ left: 20 }}
         aria-hidden="true"
       />
-
       <div className="relative flex items-center justify-between">
         {([1, 2, 3] as const).map((n) => {
           const filled = clampedCompleted >= n;
@@ -158,13 +168,294 @@ function HoldRing({
   );
 }
 
+// ─── Beat Challenge Screen ────────────────────────────────────────────────────
+function BeatChallenge({
+  song,
+  onPass,
+  onSkip,
+  reduceMotion,
+}: {
+  song: EventSong;
+  onPass: () => void;
+  onSkip: () => void;
+  reduceMotion: boolean | null;
+}) {
+  const beatIntervalMs = Math.round(60_000 / song.bpm);
+  const [beatsHit, setBeatsHit] = useState(0);
+  const [beatFlash, setBeatFlash] = useState(false);
+  const [missFlash, setMissFlash] = useState(false);
+  const [nextBeatAt, setNextBeatAt] = useState<number>(0);
+  const [countdown, setCountdown] = useState(3);
+  const [phase, setPhase] = useState<"countdown" | "playing" | "done">("countdown");
+  const [pulseScale, setPulseScale] = useState(1);
+
+  const lastAccelRef = useRef({ x: 0, y: 0, z: 0 });
+  const beatsHitRef = useRef(0);
+  const phaseRef = useRef<"countdown" | "playing" | "done">("countdown");
+  const nextBeatAtRef = useRef(0);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  // Synthesize a click/metronome beat via Web Audio
+  const playClick = useCallback((accent = false) => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = accent ? 1200 : 800;
+      gain.gain.setValueAtTime(accent ? 0.6 : 0.35, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.08);
+    } catch {
+      // Web Audio not available
+    }
+  }, []);
+
+  // Countdown then start
+  useEffect(() => {
+    if (countdown > 0) {
+      const id = window.setTimeout(() => {
+        playClick(countdown === 1);
+        setCountdown((c) => c - 1);
+      }, 800);
+      return () => window.clearTimeout(id);
+    } else {
+      setPhase("playing");
+      phaseRef.current = "playing";
+      const first = performance.now() + beatIntervalMs;
+      setNextBeatAt(first);
+      nextBeatAtRef.current = first;
+    }
+  }, [countdown, beatIntervalMs, playClick]);
+
+  // Beat ticker — fires on each beat, plays click, pulses UI
+  useEffect(() => {
+    if (phase !== "playing") return;
+
+    let raf = 0;
+    const tick = (now: number) => {
+      raf = window.requestAnimationFrame(tick);
+      if (now >= nextBeatAtRef.current) {
+        playClick(false);
+        setPulseScale(1.18);
+        window.setTimeout(() => setPulseScale(1), 120);
+        nextBeatAtRef.current = now + beatIntervalMs;
+        setNextBeatAt(nextBeatAtRef.current);
+      }
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [phase, beatIntervalMs, playClick]);
+
+  // DeviceMotion shake detection
+  useEffect(() => {
+    if (phase !== "playing") return;
+
+    const onMotion = (e: DeviceMotionEvent) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+      const x = acc.x ?? 0;
+      const y = acc.y ?? 0;
+      const z = acc.z ?? 0;
+      const prev = lastAccelRef.current;
+      const delta = Math.hypot(x - prev.x, y - prev.y, z - prev.z);
+      lastAccelRef.current = { x, y, z };
+
+      if (delta < SHAKE_THRESHOLD) return;
+
+      const now = performance.now();
+      const dist = Math.abs(now - nextBeatAtRef.current + beatIntervalMs / 2);
+      const onBeat = dist < BEAT_WINDOW_MS || Math.abs(now - nextBeatAtRef.current) < BEAT_WINDOW_MS;
+
+      if (onBeat) {
+        vibrate([15, 10, 15]);
+        setBeatFlash(true);
+        window.setTimeout(() => setBeatFlash(false), 180);
+        beatsHitRef.current += 1;
+        setBeatsHit(beatsHitRef.current);
+        if (beatsHitRef.current >= BEATS_REQUIRED) {
+          phaseRef.current = "done";
+          setPhase("done");
+          window.setTimeout(onPass, 600);
+        }
+      } else {
+        setMissFlash(true);
+        window.setTimeout(() => setMissFlash(false), 180);
+      }
+    };
+
+    window.addEventListener("devicemotion", onMotion, { passive: true });
+    return () => window.removeEventListener("devicemotion", onMotion);
+  }, [phase, beatIntervalMs, onPass]);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      try { audioCtxRef.current?.close(); } catch { /* ignore */ }
+    };
+  }, []);
+
+  const progressPct = Math.min(100, (beatsHit / BEATS_REQUIRED) * 100);
+
+  return (
+    <motion.section
+      key="beat"
+      className="min-h-dvh flex flex-col items-center justify-center px-6 py-10"
+      style={{ background: "#0f172a" }}
+      initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
+      transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
+    >
+      <div className="w-full max-w-[380px] flex flex-col items-center gap-6">
+
+        {/* Header */}
+        <div className="text-center">
+          <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500 mb-2">KINETICAUTH · BEAT CHECK</p>
+          <h2 className="text-xl font-bold text-white">Shake to the Beat</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Prove you&apos;re human — shake your phone on every pulse
+          </p>
+        </div>
+
+        {/* Song info */}
+        <div className="w-full rounded-2xl border border-slate-700/60 bg-slate-800/50 px-4 py-3 flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600/20 ring-1 ring-blue-500/30">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M6 3v8M10 1v10M2 5v4M14 4v6" stroke="#60a5fa" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white truncate">{song.title}</p>
+            <p className="text-xs text-slate-400 truncate">{song.artist} · {song.bpm} BPM</p>
+          </div>
+          <div className="ml-auto shrink-0">
+            <span className="rounded-full bg-blue-900/50 px-2 py-0.5 text-[10px] font-bold text-blue-300 ring-1 ring-blue-700/40">
+              LIVE
+            </span>
+          </div>
+        </div>
+
+        {/* Beat pulse orb */}
+        <div className="relative flex items-center justify-center" style={{ height: 200, width: 200 }}>
+          {/* Outer ring */}
+          <motion.div
+            className="absolute inset-0 rounded-full"
+            style={{ border: "2px solid rgba(96,165,250,0.2)" }}
+            animate={phase === "playing" ? { scale: [1, 1.08, 1], opacity: [0.4, 0.8, 0.4] } : {}}
+            transition={{ duration: 60 / song.bpm, repeat: Infinity, ease: "easeInOut" }}
+          />
+          {/* Progress ring */}
+          <svg className="absolute inset-0 -rotate-90" viewBox="0 0 200 200" aria-hidden>
+            <circle cx="100" cy="100" r="88" stroke="rgba(51,65,85,0.6)" strokeWidth="6" fill="none" />
+            <motion.circle
+              cx="100" cy="100" r="88"
+              stroke={beatFlash ? "#34d399" : "#3b82f6"}
+              strokeWidth="6"
+              strokeLinecap="round"
+              fill="none"
+              strokeDasharray={2 * Math.PI * 88}
+              animate={{ strokeDashoffset: 2 * Math.PI * 88 * (1 - progressPct / 100) }}
+              transition={{ type: "spring", stiffness: 180, damping: 26 }}
+            />
+          </svg>
+          {/* Center orb */}
+          <motion.div
+            className={[
+              "relative z-10 flex h-28 w-28 items-center justify-center rounded-full",
+              beatFlash ? "bg-emerald-500/30 ring-2 ring-emerald-400/60" :
+              missFlash ? "bg-red-500/20 ring-2 ring-red-400/40" :
+              "bg-blue-600/20 ring-1 ring-blue-500/30"
+            ].join(" ")}
+            animate={{ scale: pulseScale }}
+            transition={{ type: "spring", stiffness: 400, damping: 20 }}
+          >
+            {phase === "countdown" ? (
+              <motion.span
+                key={countdown}
+                className="text-4xl font-black text-white"
+                initial={{ scale: 1.4, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.6, opacity: 0 }}
+              >
+                {countdown === 0 ? "GO!" : countdown}
+              </motion.span>
+            ) : phase === "done" ? (
+              <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                <path d="M8 20l8 8L32 12" stroke="#34d399" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <div className="text-center">
+                <p className="text-3xl font-black text-white">{beatsHit}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">/ {BEATS_REQUIRED}</p>
+              </div>
+            )}
+          </motion.div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="w-full space-y-1.5">
+          <div className="flex justify-between text-[11px] text-slate-500">
+            <span>Beats matched</span>
+            <span>{beatsHit} / {BEATS_REQUIRED}</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+            <motion.div
+              className={["h-full rounded-full", beatFlash ? "bg-emerald-500" : "bg-blue-500"].join(" ")}
+              animate={{ width: `${progressPct}%` }}
+              transition={{ type: "spring", stiffness: 240, damping: 28 }}
+            />
+          </div>
+        </div>
+
+        {/* Instruction */}
+        <p className="text-center text-xs text-slate-500 leading-relaxed">
+          {phase === "countdown"
+            ? "Get ready…"
+            : phase === "done"
+            ? "🎉 Beat challenge passed!"
+            : "Shake your phone on each pulse · Keep the rhythm going"}
+        </p>
+
+        {/* Skip link */}
+        <button
+          type="button"
+          onClick={onSkip}
+          className="text-xs text-slate-600 hover:text-slate-400 transition underline underline-offset-2"
+        >
+          Skip challenge (manual review may apply)
+        </button>
+      </div>
+    </motion.section>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export type VerificationWizardProps = {
   onVerified?: (score: ScoreBreakdown) => void;
   onCancel?: () => void;
+  returnTo?: string;
+  /** Songs for the beat challenge (music events only) */
+  songs?: EventSong[];
+  /** Whether the site is under high traffic */
+  highTraffic?: boolean;
+  /** Number of tickets being purchased */
+  ticketQty?: number;
 };
 
-export default function VerificationWizard({ onVerified, onCancel: _onCancel }: VerificationWizardProps) {
+export default function VerificationWizard({
+  onVerified,
+  onCancel: _onCancel,
+  songs,
+  highTraffic = false,
+  ticketQty = 1,
+}: VerificationWizardProps) {
   const reduceMotion = useReducedMotion();
   const { smoothedBeta, smoothedGamma, smoothedRef, available, permissionState, requestPermission } =
     useDeviceOrientation();
@@ -180,6 +471,10 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
   const [holdPct, setHoldPct] = useState(0);
   const [pulseKey, setPulseKey] = useState(0);
 
+  // Beat challenge state
+  const [beatSong, setBeatSong] = useState<EventSong | null>(null);
+  const beatReasonRef = useRef<"gyro_fail" | "high_traffic" | "high_qty" | null>(null);
+
   const timingsRef = useRef<{ timeToLeft?: number; timeToRight?: number }>({});
   const taskStartAtRef = useRef<number | null>(null);
   const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
@@ -187,6 +482,10 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
   const motionSamplesRef = useRef<MotionSample[]>([]);
   const stableMsRef = useRef(0);
   const tiltHoldMsRef = useRef(0);
+
+  // Tracks how long the ball has been outside the circle during "steady" task
+  const outsideMsRef = useRef(0);
+  const gyroFailTriggeredRef = useRef(false);
 
   const [finalScore, setFinalScore] = useState<ScoreBreakdown>(() =>
     scoreHumanConfidence({ motionSamples: [], directedTimings: undefined, stabilityPct: 0, stabilityHoldPct: 0 })
@@ -206,20 +505,49 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
     return "Step 3 — Hold Steady";
   }, [screen, taskId]);
 
+  // Pick a random song for the beat challenge
+  const pickSong = useCallback((): EventSong | null => {
+    if (!songs || songs.length === 0) return null;
+    return songs[Math.floor(Math.random() * songs.length)];
+  }, [songs]);
+
+  const triggerBeatChallenge = useCallback((reason: "gyro_fail" | "high_traffic" | "high_qty") => {
+    const song = pickSong();
+    if (!song) return false;
+    beatReasonRef.current = reason;
+    setBeatSong(song);
+    setScreen("beat");
+    return true;
+  }, [pickSong]);
+
   const advanceToTasks = useCallback(() => {
+    // Check pre-task triggers (high traffic or high qty)
+    if (songs && songs.length > 0) {
+      if (highTraffic) {
+        triggerBeatChallenge("high_traffic");
+        return;
+      }
+      if (ticketQty >= 4) {
+        triggerBeatChallenge("high_qty");
+        return;
+      }
+    }
+
     setScreen("tasks");
     setTaskId("left");
     timingsRef.current = {};
     motionSamplesRef.current = [];
     stableMsRef.current = 0;
     tiltHoldMsRef.current = 0;
+    outsideMsRef.current = 0;
+    gyroFailTriggeredRef.current = false;
     taskStartAtRef.current = performance.now();
     baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
     setDot({ x: 0, y: 0 });
     setInside(false);
     setHoldPct(0);
     setPulseKey((k) => k + 1);
-  }, [smoothedRef]);
+  }, [smoothedRef, songs, highTraffic, ticketQty, triggerBeatChallenge]);
 
   const finish = useCallback((score: ScoreBreakdown) => {
     setFinalScore(score);
@@ -236,6 +564,8 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
     taskStartAtRef.current = performance.now();
     stableMsRef.current = 0;
     tiltHoldMsRef.current = 0;
+    outsideMsRef.current = 0;
+    gyroFailTriggeredRef.current = false;
     setHoldPct(0);
     setInside(false);
     setDot({ x: 0, y: 0 });
@@ -260,12 +590,16 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
           if (prev === "left") {
             baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
             taskStartAtRef.current = performance.now();
+            outsideMsRef.current = 0;
+            gyroFailTriggeredRef.current = false;
             completing = false;
             return "right";
           }
           if (prev === "right") {
             baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
             taskStartAtRef.current = performance.now();
+            outsideMsRef.current = 0;
+            gyroFailTriggeredRef.current = false;
             completing = false;
             return "steady";
           }
@@ -311,6 +645,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
         return;
       }
 
+      // ── Steady task ──────────────────────────────────────────────────────
       const xTarget = clamp(dGamma * DOT_PX_PER_DEG, -DOT_MAX_OFFSET_PX, DOT_MAX_OFFSET_PX);
       const yTarget = clamp(dBeta * DOT_PX_PER_DEG, -DOT_MAX_OFFSET_PX, DOT_MAX_OFFSET_PX);
       const dist = Math.hypot(xTarget, yTarget);
@@ -324,6 +659,25 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
       });
 
       setInside(inZone);
+
+      // Track time outside circle — triggers beat challenge after GYRO_FAIL_SECONDS
+      if (!inZone && !gyroFailTriggeredRef.current) {
+        outsideMsRef.current += dtMs;
+        if (outsideMsRef.current >= GYRO_FAIL_SECONDS * 1000) {
+          gyroFailTriggeredRef.current = true;
+          window.cancelAnimationFrame(raf);
+          // Trigger beat challenge if songs available, otherwise just continue
+          const triggered = triggerBeatChallenge("gyro_fail");
+          if (!triggered) {
+            // No songs: just reset the outside timer and let them keep trying
+            outsideMsRef.current = 0;
+            gyroFailTriggeredRef.current = false;
+          }
+          return;
+        }
+      } else if (inZone) {
+        outsideMsRef.current = 0;
+      }
 
       stableMsRef.current = inZone
         ? clamp(stableMsRef.current + dtMs, 0, HOLD_STEADY_TARGET_MS)
@@ -344,7 +698,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
 
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [available, finish, permissionState, reduceMotion, screen, smoothedRef, taskId]);
+  }, [available, finish, permissionState, reduceMotion, screen, smoothedRef, taskId, triggerBeatChallenge]);
 
   const completedCount = useMemo(() => {
     if (screen === "result") return 3;
@@ -377,12 +731,69 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
 
   const granted = permissionState === "granted" || motionUnlocked;
 
+  // After beat challenge passes, continue to tasks (unless gyro fail — go straight to result)
+  const handleBeatPass = useCallback(() => {
+    if (beatReasonRef.current === "gyro_fail") {
+      // They failed gyro but passed beat — still give them a passing score
+      const score = scoreHumanConfidence({
+        motionSamples: motionSamplesRef.current,
+        directedTimings: timingsRef.current,
+        stabilityPct: 50,
+        stabilityHoldPct: 50,
+      });
+      finish(score);
+    } else {
+      // Pre-task beat challenge passed — now do the gyro tasks
+      setScreen("tasks");
+      setTaskId("left");
+      timingsRef.current = {};
+      motionSamplesRef.current = [];
+      stableMsRef.current = 0;
+      tiltHoldMsRef.current = 0;
+      outsideMsRef.current = 0;
+      gyroFailTriggeredRef.current = false;
+      taskStartAtRef.current = performance.now();
+      baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
+      setDot({ x: 0, y: 0 });
+      setInside(false);
+      setHoldPct(0);
+      setPulseKey((k) => k + 1);
+    }
+    setBeatSong(null);
+  }, [finish, smoothedRef]);
+
+  const handleBeatSkip = useCallback(() => {
+    // Skip beat challenge — go straight to tasks regardless of reason
+    setBeatSong(null);
+    setScreen("tasks");
+    setTaskId("left");
+    timingsRef.current = {};
+    motionSamplesRef.current = [];
+    stableMsRef.current = 0;
+    tiltHoldMsRef.current = 0;
+    outsideMsRef.current = 0;
+    gyroFailTriggeredRef.current = false;
+    taskStartAtRef.current = performance.now();
+    baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
+    setDot({ x: 0, y: 0 });
+    setInside(false);
+    setHoldPct(0);
+    setPulseKey((k) => k + 1);
+  }, [smoothedRef]);
+
+  // Outside timer display for steady task
+  const outsideSecsRemaining = useMemo(() => {
+    if (screen !== "tasks" || taskId !== "steady" || inside) return null;
+    const remaining = Math.ceil((GYRO_FAIL_SECONDS * 1000 - outsideMsRef.current) / 1000);
+    return remaining;
+  }, [screen, taskId, inside, pulseKey]); // pulseKey forces re-eval on each tick
+
   return (
     <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
       <AnimatePresence mode="popLayout" initial={false}>
 
         {/* ═══════════════════════════════════════════════════════════
-            SCREEN 1 — INTRO (full-screen hero)
+            SCREEN 1 — INTRO
         ═══════════════════════════════════════════════════════════ */}
         {screen === "intro" ? (
           <motion.section
@@ -404,7 +815,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
             exit={reduceMotion ? undefined : { opacity: 0, scale: 0.97 }}
             transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 28, mass: 0.6 }}
           >
-            {/* Ambient background glow */}
             <div
               aria-hidden="true"
               style={{
@@ -416,7 +826,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
               }}
             />
 
-            {/* Title */}
             <h1
               style={{
                 position: "relative",
@@ -432,7 +841,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
               Live Motion Detection Preview
             </h1>
 
-            {/* PhoneTiltPreview — flexGrow centers it vertically */}
             <div
               style={{
                 position: "relative",
@@ -444,14 +852,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 minHeight: 0
               }}
             >
-              <div
-                style={{
-                  position: "relative",
-                  width: 320,
-                  height: 640,
-                  flexShrink: 0
-                }}
-              >
+              <div style={{ position: "relative", width: 320, height: 640, flexShrink: 0 }}>
                 <PhoneTiltPreview
                   beta={granted ? smoothedBeta : 0}
                   gamma={granted ? smoothedGamma : 0}
@@ -462,7 +863,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
               </div>
             </div>
 
-            {/* Subtitle */}
             <p
               style={{
                 position: "relative",
@@ -477,7 +877,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
               Move your phone to see real-time orientation tracking.
             </p>
 
-            {/* Permission / Continue CTA: permission does NOT auto-advance */}
             <div
               style={{
                 position: "relative",
@@ -550,21 +949,20 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
           </motion.section>
         ) : null}
 
-          {/* ═══════════════════════════════════════════════════════════
-              SCREEN 2 — TASK FLOW
-          ═══════════════════════════════════════════════════════════ */}
-          {screen === "tasks" ? (
-            <motion.section
-              key="tasks"
-              className="min-h-dvh"
-              style={{ background: "#0f172a" }}
-              initial={reduceMotion ? false : { opacity: 0, y: 16 }}
-              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-              exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
-              transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
-            >
-              <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
-              {/* Header */}
+        {/* ═══════════════════════════════════════════════════════════
+            SCREEN 2 — TASK FLOW
+        ═══════════════════════════════════════════════════════════ */}
+        {screen === "tasks" ? (
+          <motion.section
+            key="tasks"
+            className="min-h-dvh"
+            style={{ background: "#0f172a" }}
+            initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
+            transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
+          >
+            <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
                 <p className="text-[10px] font-medium text-slate-500">
@@ -572,7 +970,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 </p>
               </div>
 
-              {/* Step label */}
               <div className="mt-6 space-y-1">
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.p
@@ -600,7 +997,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 </AnimatePresence>
               </div>
 
-              {/* Interaction area */}
               <div
                 className={[
                   "relative mt-6 w-full overflow-hidden rounded-2xl border",
@@ -621,7 +1017,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                         exit={reduceMotion ? undefined : { opacity: 0 }}
                         transition={reduceMotion ? undefined : { duration: 0.2 }}
                       >
-                        {/* Arrow + ring */}
                         <div className="relative grid place-items-center">
                           <div className="relative h-[180px] w-[180px]">
                             <HoldRing pct01={holdPct} radius={70} strokeWidth={8} color="rgba(96,165,250,0.9)" />
@@ -631,7 +1026,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                           </div>
                         </div>
 
-                        {/* Tilt bar */}
                         <div className="w-full px-4 space-y-1.5">
                           <div className="flex justify-between text-[11px] text-slate-500">
                             <span>← Left</span>
@@ -655,7 +1049,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                         exit={reduceMotion ? undefined : { opacity: 0 }}
                         transition={reduceMotion ? undefined : { duration: 0.2 }}
                       >
-                        {/* Stability target */}
                         <div className="relative grid place-items-center">
                           <div className="relative h-[180px] w-[180px]">
                             <HoldRing pct01={holdPct} color={inside ? "rgba(52,211,153,0.9)" : "rgba(148,163,184,0.5)"} radius={74} strokeWidth={8} />
@@ -681,7 +1074,20 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                           </div>
                         </div>
 
-                        {/* Stability bar */}
+                        {/* Outside timer warning */}
+                        {!inside && outsideSecsRemaining !== null && outsideSecsRemaining <= GYRO_FAIL_SECONDS && songs && songs.length > 0 && (
+                          <motion.p
+                            key={outsideSecsRemaining}
+                            className="text-xs font-semibold text-amber-400"
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                          >
+                            {outsideSecsRemaining > 1
+                              ? `Move to center — beat challenge in ${outsideSecsRemaining}s`
+                              : "Beat challenge starting…"}
+                          </motion.p>
+                        )}
+
                         <div className="w-full px-4 space-y-1.5">
                           <div className="flex justify-between text-[11px] text-slate-500">
                             <span>Stability</span>
@@ -701,7 +1107,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 </div>
               </div>
 
-              {/* Overall progress bar */}
               <div className="mt-6 space-y-2">
                 <div className="flex justify-between text-[11px] text-slate-500">
                   <span>Overall progress</span>
@@ -717,35 +1122,45 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 </div>
               </div>
 
-              {/* Step tracker */}
               <div className="mt-6">
                 <Stepper completed={completedCount} />
               </div>
-              </div>
-            </motion.section>
-          ) : null}
+            </div>
+          </motion.section>
+        ) : null}
 
-          {/* ═══════════════════════════════════════════════════════════
-              SCREEN 3 — RESULT
-          ═══════════════════════════════════════════════════════════ */}
-          {screen === "result" ? (
-            <motion.section
-              key="result"
-              className="min-h-dvh"
-              style={{ background: "#0f172a" }}
-              initial={reduceMotion ? false : { opacity: 0, y: 16 }}
-              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-              exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
-              transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
-            >
-              <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
-              {/* Wordmark */}
+        {/* ═══════════════════════════════════════════════════════════
+            SCREEN 2b — BEAT CHALLENGE
+        ═══════════════════════════════════════════════════════════ */}
+        {screen === "beat" && beatSong ? (
+          <BeatChallenge
+            key="beat"
+            song={beatSong}
+            onPass={handleBeatPass}
+            onSkip={handleBeatSkip}
+            reduceMotion={reduceMotion}
+          />
+        ) : null}
+
+        {/* ═══════════════════════════════════════════════════════════
+            SCREEN 3 — RESULT
+        ═══════════════════════════════════════════════════════════ */}
+        {screen === "result" ? (
+          <motion.section
+            key="result"
+            className="min-h-dvh"
+            style={{ background: "#0f172a" }}
+            initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
+            transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
+          >
+            <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
               </div>
 
               <div className="flex flex-1 flex-col justify-center gap-6">
-                {/* Status badge */}
                 <motion.div
                   className="flex items-center gap-3"
                   initial={reduceMotion ? false : { opacity: 0, y: 10 }}
@@ -759,11 +1174,14 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                   </div>
                   <div>
                     <p className="text-[15px] font-semibold text-white">Identity confirmed</p>
-                    <p className="text-xs text-slate-400">Motion verification complete</p>
+                    <p className="text-xs text-slate-400">
+                      {beatReasonRef.current
+                        ? "Beat challenge + motion verification complete"
+                        : "Motion verification complete"}
+                    </p>
                   </div>
                 </motion.div>
 
-                {/* Verification summary card */}
                 <motion.div
                   className="w-full rounded-2xl border border-slate-700/60 bg-slate-800/50"
                   initial={reduceMotion ? false : { opacity: 0, y: 12 }}
@@ -778,6 +1196,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                       { label: "Motion signature", value: "Valid" },
                       { label: "Behavioral timing", value: "Natural" },
                       { label: "Device integrity", value: "Verified" },
+                      ...(beatReasonRef.current ? [{ label: "Beat challenge", value: "Passed" }] : []),
                     ].map((row, i) => (
                       <motion.div
                         key={row.label}
@@ -796,7 +1215,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                   </div>
                 </motion.div>
 
-                {/* Risk level */}
                 <motion.div
                   className="w-full rounded-2xl border border-slate-700/60 bg-slate-800/50"
                   initial={reduceMotion ? false : { opacity: 0, y: 10 }}
@@ -820,7 +1238,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 </motion.div>
               </div>
 
-              {/* Return to checkout */}
               <div className="mt-8">
                 <p className="mb-3 text-center text-xs text-slate-500">
                   Returning you to checkout automatically…
@@ -837,11 +1254,11 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                   Return to checkout
                 </motion.button>
               </div>
-              </div>
-            </motion.section>
-          ) : null}
+            </div>
+          </motion.section>
+        ) : null}
 
-        </AnimatePresence>
+      </AnimatePresence>
     </main>
   );
 }

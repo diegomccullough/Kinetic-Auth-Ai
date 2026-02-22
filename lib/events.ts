@@ -13,6 +13,15 @@ export type SeatSection = {
   height: number;
 };
 
+export type EventSong = {
+  title: string;
+  artist: string;
+  /** BPM for beat-challenge timing */
+  bpm: number;
+  /** YouTube embed ID (used for audio only) */
+  youtubeId: string;
+};
+
 export type Event = {
   slug: string;
   name: string;
@@ -30,6 +39,8 @@ export type Event = {
   isHot?: boolean;
   tag?: string; // "On Sale Now", "Selling Fast", etc.
   sections: SeatSection[];
+  /** Popular songs for beat-challenge (music/festival events only) */
+  songs?: EventSong[];
 };
 
 // ─── Seat sections for arena-style venues ─────────────────────────────────────
@@ -95,6 +106,11 @@ export const EVENTS: Event[] = [
     isHot: true,
     tag: "Selling Fast",
     sections: arenaFloorSections,
+    songs: [
+      { title: "Homecoming", artist: "BISON LIVE", bpm: 128, youtubeId: "dQw4w9WgXcQ" },
+      { title: "Neon City Nights", artist: "BISON LIVE", bpm: 120, youtubeId: "dQw4w9WgXcQ" },
+      { title: "Onslaught", artist: "BISON LIVE", bpm: 140, youtubeId: "dQw4w9WgXcQ" },
+    ],
   },
   {
     slug: "midnight-run",
@@ -112,6 +128,11 @@ export const EVENTS: Event[] = [
     isFeatured: true,
     tag: "On Sale Now",
     sections: amphiSections,
+    songs: [
+      { title: "Midnight Run", artist: "Midnight Run", bpm: 110, youtubeId: "dQw4w9WgXcQ" },
+      { title: "Harbor Lights", artist: "Midnight Run", bpm: 95, youtubeId: "dQw4w9WgXcQ" },
+      { title: "Last Train", artist: "Midnight Run", bpm: 118, youtubeId: "dQw4w9WgXcQ" },
+    ],
   },
   {
     slug: "thunder-dome",
@@ -177,6 +198,11 @@ export const EVENTS: Event[] = [
     isFeatured: true,
     tag: "On Sale Now",
     sections: amphiSections,
+    songs: [
+      { title: "Electric Dreams", artist: "Electric Dreams", bpm: 130, youtubeId: "dQw4w9WgXcQ" },
+      { title: "Lakeside", artist: "Electric Dreams", bpm: 122, youtubeId: "dQw4w9WgXcQ" },
+      { title: "Festival Fire", artist: "Electric Dreams", bpm: 145, youtubeId: "dQw4w9WgXcQ" },
+    ],
   },
   {
     slug: "neon-nights",
@@ -194,6 +220,11 @@ export const EVENTS: Event[] = [
     isHot: true,
     tag: "Selling Fast",
     sections: arenaFloorSections,
+    songs: [
+      { title: "Neon Nights", artist: "Neon Nights", bpm: 138, youtubeId: "dQw4w9WgXcQ" },
+      { title: "Vegas Pulse", artist: "Neon Nights", bpm: 150, youtubeId: "dQw4w9WgXcQ" },
+      { title: "Skyline Drop", artist: "Neon Nights", bpm: 142, youtubeId: "dQw4w9WgXcQ" },
+    ],
   },
   {
     slug: "slam-dunk-classic",

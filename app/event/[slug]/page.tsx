@@ -77,7 +77,7 @@ function EventDetailClient() {
 
   const total = selectedSection
     ? selectedSection.price * qty + qty * 12
-    : event.defaultPrice;
+    : event.defaultPrice * qty + qty * 12;
 
   const seatsUrl = `/event/${slug}/seats`;
   const verifyUrl = `/verify?return=${encodeURIComponent(`/event/${slug}?section=${sectionId ?? ""}&qty=${qty}`)}`;
