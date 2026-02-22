@@ -687,6 +687,8 @@ export default function VerificationWizard({
     updatedAt: null,
   });
 
+  const [screen, setScreen] = useState<Screen>("intro");
+
   const callRiskEval = useCallback(async (failCount: number): Promise<RiskResult> => {
     const payload = { ...DEMO_RISK_PAYLOAD, tilt_fail_count: failCount };
     const ts = new Date().toISOString();
@@ -743,7 +745,6 @@ export default function VerificationWizard({
     }
   }, [risk?.risk_level, screen]);
 
-  const [screen, setScreen] = useState<Screen>("intro");
   const [motionUnlocked, setMotionUnlocked] = useState(false);
   const [taskId, setTaskId] = useState<TaskId>("left");
   const [confidenceTarget, setConfidenceTarget] = useState(92);
