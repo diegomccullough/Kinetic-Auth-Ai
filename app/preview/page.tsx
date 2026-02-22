@@ -45,7 +45,7 @@ export default function MotionPreviewPage() {
     return () => window.removeEventListener("deviceorientation", onOrientation);
   }, [permissionState]);
 
-  // Lerp animation loop — feeds smoothed values into PhoneTiltPreview
+  // Lerp loop — pass raw sensor values to PhoneTiltPreview (tilt math is inside component)
   useEffect(() => {
     if (permissionState !== "granted") return;
 
@@ -58,7 +58,6 @@ export default function MotionPreviewPage() {
 
       const target = targetRef.current;
       const s = smoothRef.current;
-
       s.beta = s.beta + (target.beta - s.beta) * 0.1;
       s.gamma = s.gamma + (target.gamma - s.gamma) * 0.1;
 
@@ -104,16 +103,16 @@ export default function MotionPreviewPage() {
     <main
       style={{
         width: "100vw",
-        height: "100vh",
-        background: "#0f172a",
+        height: "100dvh",
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
+        background: "#0f172a",
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
         WebkitFontSmoothing: "antialiased",
         color: "#fff",
-        overflow: "hidden",
         position: "relative"
       }}
     >
@@ -146,13 +145,13 @@ export default function MotionPreviewPage() {
         Live Motion Detection Preview
       </h1>
 
-      {/* PhoneTiltPreview — full hero element */}
+      {/* PhoneTiltPreview — responsive, no max-width constraint */}
       <div
         style={{
           position: "relative",
           zIndex: 1,
-          width: 320,
-          height: 640,
+          width: "min(80vw, 360px)",
+          aspectRatio: "1 / 1.9",
           flexShrink: 0
         }}
       >

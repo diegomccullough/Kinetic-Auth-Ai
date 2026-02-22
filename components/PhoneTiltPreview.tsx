@@ -8,6 +8,11 @@ function clamp(n: number, min: number, max: number) {
 
 type PhoneTiltVariant = "default" | "cinematic";
 
+const SENSITIVITY = 2.2;
+const CLAMP_DEG = 45;
+const SMOOTHING = 0.3;
+const DEAD_ZONE_DEG = 2;
+
 const VARIANT_TUNING: Record<
   PhoneTiltVariant,
   {
@@ -18,7 +23,7 @@ const VARIANT_TUNING: Record<
   }
 > = {
   default: { maxDeg: 20, deadzoneDeg: 1.25, parallax: 1.0, spring: { stiffness: 150, damping: 18 } },
-  cinematic: { maxDeg: 18, deadzoneDeg: 0.35, parallax: 1.35, spring: { stiffness: 230, damping: 14 } }
+  cinematic: { maxDeg: CLAMP_DEG, deadzoneDeg: DEAD_ZONE_DEG, parallax: 1.35, spring: { stiffness: 230, damping: 14 } }
 };
 
 type PhoneTiltPreviewProps = {
@@ -41,7 +46,7 @@ export default function PhoneTiltPreview({
   const bgRef = useRef<HTMLDivElement | null>(null);
   const rimRef = useRef<HTMLDivElement | null>(null);
 
-  // Capture baseline on entry (Step 1 mount) so tilt is relative even if phone isn't flat.
+  // Baseline: capture on first deviceorientation after permission so rotation is relative.
   const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
 
   const latest = useRef({ beta: 0, gamma: 0 });
@@ -52,9 +57,10 @@ export default function PhoneTiltPreview({
   }, [beta, gamma]);
 
   useEffect(() => {
-    if (baselineRef.current) return;
+    if (reduceMotion) return;
+    if (baselineRef.current !== null) return;
     baselineRef.current = { beta, gamma };
-  }, [beta, gamma]);
+  }, [beta, gamma, reduceMotion]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -77,33 +83,29 @@ export default function PhoneTiltPreview({
     const vel = { beta: 0, gamma: 0 };
     const velSmoothed = { beta: 0, gamma: 0 };
 
+    const deadZone = (v: number) => (Math.abs(v) < DEAD_ZONE_DEG ? 0 : v);
+
     const tick = (t: number) => {
       rafRef.current = window.requestAnimationFrame(tick);
       if (t - last < 1000 / 60) return;
       const dt = clamp((last ? t - last : 16) / 1000, 0.008, 0.05);
       last = t;
 
-      const base = baselineRef.current ?? { beta: 0, gamma: 0 };
+      const base = baselineRef.current ?? latest.current;
       const relBeta = latest.current.beta - base.beta;
       const relGamma = latest.current.gamma - base.gamma;
+      const dzedBeta = deadZone(relBeta);
+      const dzedGamma = deadZone(relGamma);
+      const scaledBeta = clamp(dzedBeta * SENSITIVITY, -CLAMP_DEG, CLAMP_DEG);
+      const scaledGamma = clamp(dzedGamma * SENSITIVITY, -CLAMP_DEG, CLAMP_DEG);
 
-      const targetBeta = clamp(relBeta, -tune.maxDeg, tune.maxDeg);
-      const targetGamma = clamp(relGamma, -tune.maxDeg, tune.maxDeg);
+      // Lerp toward target (smoothing factor 0.3)
+      pos.beta += (scaledBeta - pos.beta) * SMOOTHING;
+      pos.gamma += (scaledGamma - pos.gamma) * SMOOTHING;
 
-      // Deadzone: ignore micro changes to reduce jitter.
-      const nextTargetBeta = Math.abs(targetBeta - pos.beta) < tune.deadzoneDeg ? pos.beta : targetBeta;
-      const nextTargetGamma = Math.abs(targetGamma - pos.gamma) < tune.deadzoneDeg ? pos.gamma : targetGamma;
-
-      // Underdamped spring for keynote-style snappy overshoot.
-      vel.beta += (nextTargetBeta - pos.beta) * tune.spring.stiffness * dt;
-      vel.gamma += (nextTargetGamma - pos.gamma) * tune.spring.stiffness * dt;
-      const damp = Math.exp(-tune.spring.damping * dt);
-      vel.beta *= damp;
-      vel.gamma *= damp;
-      pos.beta += vel.beta * dt;
-      pos.gamma += vel.gamma * dt;
-
-      // Smooth velocity just for glow (avoid flicker).
+      // Velocity for glow
+      vel.beta = (scaledBeta - pos.beta) / Math.max(dt, 0.016);
+      vel.gamma = (scaledGamma - pos.gamma) / Math.max(dt, 0.016);
       velSmoothed.beta = velSmoothed.beta + (vel.beta - velSmoothed.beta) * 0.18;
       velSmoothed.gamma = velSmoothed.gamma + (vel.gamma - velSmoothed.gamma) * 0.18;
 
@@ -166,12 +168,11 @@ export default function PhoneTiltPreview({
       <div className="absolute inset-0 grid place-items-center p-4">
         <div
           ref={phoneRef}
-          className={[
-            "relative select-none",
-            variant === "cinematic" ? "w-[82%] max-w-[310px]" : "w-[72%] max-w-[260px]"
-          ].join(" ")}
+          className="relative select-none"
           style={{
-            aspectRatio: "9 / 19.5",
+            width: "100%",
+            maxWidth: "min(80vw, 360px)",
+            aspectRatio: "1 / 1.9",
             transformStyle: "preserve-3d",
             transformOrigin: "center center",
             willChange: "transform"
