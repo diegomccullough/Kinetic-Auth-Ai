@@ -16,20 +16,12 @@ body {
 
 /* ─── Kinetic progress (used by VerificationWizard) ─────────────────── */
 .kinetic-progress {
-  background: linear-gradient(90deg, #22d3ee, #6366f1, #34d399, #22d3ee);
-  background-size: 220% 100%;
-  animation: kineticGradient 2.2s linear infinite;
-}
-
-@keyframes kineticGradient {
-  0%   { background-position: 0% 50%; }
-  100% { background-position: 220% 50%; }
+  background: #3b82f6;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .kinetic-progress {
-    animation: none;
-    background: #22d3ee;
+    background: #3b82f6;
   }
 }
 

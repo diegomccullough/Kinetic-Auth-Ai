@@ -13,25 +13,6 @@ function VerifyPageClient() {
     returnTo.includes("?") ? `${returnTo}&verified=true` : `${returnTo}?verified=true`;
 
   return (
-<<<<<<< HEAD
-    <main className="min-h-dvh bg-surface px-4 py-4 sm:py-6">
-      <div className="mx-auto max-w-verify">
-        <div className="overflow-hidden rounded-2xl bg-surface-elevated shadow-lg sm:rounded-3xl">
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-4 sm:px-6 sm:py-5">
-            <h1 className="text-lg font-semibold text-white sm:text-xl">Verify your identity</h1>
-            <p className="mt-1 text-sm text-white/70">Required to continue to checkout.</p>
-          </div>
-          <div className="px-4 py-5 sm:px-6 sm:py-6">
-            <VerificationWizard
-              returnTo={returnTo}
-              onVerified={() => router.push(verifiedUrl)}
-              onCancel={() => router.push(returnTo)}
-            />
-          </div>
-        </div>
-      </div>
-    </main>
-=======
     <VerificationWizard
       onVerified={() => {
         router.push("/?verified=true");
@@ -40,13 +21,12 @@ function VerifyPageClient() {
         router.push("/");
       }}
     />
->>>>>>> c262930661f37671db8467cb71be9d0c467d4414
   );
 }
 
 export default function VerifyPage() {
   return (
-    <Suspense fallback={<main className="min-h-dvh bg-black" />}>
+    <Suspense fallback={<main className="min-h-dvh bg-[#0f172a]" />}>
       <VerifyPageClient />
     </Suspense>
   );

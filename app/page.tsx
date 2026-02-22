@@ -30,10 +30,11 @@ function useQueue() {
 
     const cd = window.setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
 
+    const timerIds = timers.current;
     return () => {
       window.clearInterval(qv);
       window.clearInterval(cd);
-      for (const id of timers.current) window.clearTimeout(id);
+      for (const id of timerIds) window.clearTimeout(id);
     };
   }, []);
 
