@@ -102,9 +102,11 @@ export default function PhoneTiltPreview({
 
       const rx = -pos.beta;
       const ry = pos.gamma;
-      // Parallax: outer shell 100%, inner screen 70% (counter-rotate 30% in local space)
-      const innerRx = rx * 0.3;
-      const innerRy = ry * 0.3;
+      // Parallax: outer = full rotation; inner = 0.7 multiplier (counter-rotate 0.3 in local space). No Framer/style prop — ref-only.
+      const INNER_ROTATION_SCALE = 0.7;
+      const counterRotate = 1 - INNER_ROTATION_SCALE;
+      const innerRx = rx * counterRotate;
+      const innerRy = ry * counterRotate;
 
       phone.style.transformOrigin = "center center";
       phone.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg)`;

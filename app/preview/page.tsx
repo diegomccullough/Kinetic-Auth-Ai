@@ -24,19 +24,20 @@ export default function MotionPreviewPage() {
   const latestOrientation = useRef({ beta: 0, gamma: 0 });
   const smoothRef = useRef({ beta: 0, gamma: 0 });
   const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
-  const animateToZeroUntilRef = useRef<number>(0);
   const stableLowTiltSinceRef = useRef<number | null>(null);
-  const lastTapRef = useRef<number>(0);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef = useRef<number | null>(null);
+  const motionReceivedRef = useRef(false);
 
   const [sensorValues, setSensorValues] = useState({ beta: 0, gamma: 0 });
   const [toast, setToast] = useState<string | null>(null);
+  const [motionReceived, setMotionReceived] = useState(false);
 
   const SENSITIVITY = 1.8;
   const SMOOTHING = 0.25;
   const CLAMP_DEG = 45;
   const DEAD_ZONE_DEG = 2;
-  const RECAL_ANIM_MS = 300;
+  const LONG_PRESS_MS = 450;
   const SOFT_STAB_THRESHOLD_DEG = 2;
   const SOFT_STAB_DURATION_MS = 1500;
   const SOFT_STAB_NUDGE = 0.02;
@@ -51,19 +52,34 @@ export default function MotionPreviewPage() {
     if (permissionState !== "granted") {
       smoothRef.current = { beta: 0, gamma: 0 };
       baselineRef.current = null;
-      animateToZeroUntilRef.current = 0;
       stableLowTiltSinceRef.current = null;
+      motionReceivedRef.current = false;
+      setMotionReceived(false);
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
       setSensorValues({ beta: 0, gamma: 0 });
     }
   }, [permissionState]);
 
-  // Attach deviceorientation listener
+  // Attach deviceorientation listener; capture baseline on first event, then mark motion received
   useEffect(() => {
     if (permissionState !== "granted") return;
 
     const handleOrientation = (event: DeviceOrientationEvent) => {
       latestOrientation.current.beta = event.beta ?? 0;
       latestOrientation.current.gamma = event.gamma ?? 0;
+      if (baselineRef.current === null) {
+        baselineRef.current = {
+          beta: latestOrientation.current.beta,
+          gamma: latestOrientation.current.gamma
+        };
+      }
+      if (!motionReceivedRef.current) {
+        motionReceivedRef.current = true;
+        setMotionReceived(true);
+      }
     };
 
     window.addEventListener("deviceorientation", handleOrientation, { passive: true });
@@ -72,28 +88,36 @@ export default function MotionPreviewPage() {
     };
   }, [permissionState]);
 
-  // Double-tap recalibration (no navigation)
+  // Long-press (450ms) recalibration — only update baselineRef
   const handlePreviewPointerDown = useCallback(() => {
     if (permissionState !== "granted") return;
-    const now = Date.now();
-    if (now - lastTapRef.current < 400) {
-      lastTapRef.current = 0;
+    if (longPressTimerRef.current) return;
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
       const raw = latestOrientation.current;
       baselineRef.current = { beta: raw.beta, gamma: raw.gamma };
-      animateToZeroUntilRef.current = now + RECAL_ANIM_MS;
-      stableLowTiltSinceRef.current = null;
-      setToast("Orientation recalibrated");
-      setTimeout(() => setToast(null), 2500);
-      return;
-    }
-    lastTapRef.current = now;
+      setToast("Recalibrated");
+      setTimeout(() => setToast(null), 900);
+    }, LONG_PRESS_MS);
   }, [permissionState]);
 
-  // Visual stabilization + recalibration animation + soft stabilization
+  const handlePreviewPointerUp = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handlePreviewPointerCancel = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  // Motion runs only after baseline is set; always use relative to baseline
   useEffect(() => {
     if (permissionState !== "granted") return;
-
-    smoothRef.current = { beta: 0, gamma: 0 };
 
     let last = 0;
     const deadZone = (v: number) => (Math.abs(v) < DEAD_ZONE_DEG ? 0 : v);
@@ -106,29 +130,19 @@ export default function MotionPreviewPage() {
       const raw = latestOrientation.current;
       const base = baselineRef.current;
 
-      // Recalibration: animate display to 0 over ~300ms
-      if (animateToZeroUntilRef.current > 0) {
-        const s = smoothRef.current;
-        s.beta += (0 - s.beta) * 0.25;
-        s.gamma += (0 - s.gamma) * 0.25;
-        setSensorValues({ beta: parseFloat(s.beta.toFixed(2)), gamma: parseFloat(s.gamma.toFixed(2)) });
-        if (now >= animateToZeroUntilRef.current) {
-          animateToZeroUntilRef.current = 0;
-          smoothRef.current = { beta: 0, gamma: 0 };
-          setSensorValues({ beta: 0, gamma: 0 });
-        }
+      if (base === null) {
+        setSensorValues({ beta: 0, gamma: 0 });
         return;
       }
 
-      // Relative to baseline when set
-      const relBeta = base ? raw.beta - base.beta : raw.beta;
-      const relGamma = base ? raw.gamma - base.gamma : raw.gamma;
-      let targetBeta = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(relBeta) * SENSITIVITY));
-      let targetGamma = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(relGamma) * SENSITIVITY));
+      const relBeta = raw.beta - base.beta;
+      const relGamma = raw.gamma - base.gamma;
+      const targetBeta = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(relBeta) * SENSITIVITY));
+      const targetGamma = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(relGamma) * SENSITIVITY));
 
       // Soft stabilization: if tilt magnitude < 2° for 1500ms, nudge baseline toward current
       const mag = Math.hypot(targetBeta, targetGamma);
-      if (mag < SOFT_STAB_THRESHOLD_DEG && base) {
+      if (mag < SOFT_STAB_THRESHOLD_DEG) {
         if (stableLowTiltSinceRef.current === null) stableLowTiltSinceRef.current = now;
         else if (now - stableLowTiltSinceRef.current >= SOFT_STAB_DURATION_MS) {
           base.beta += (raw.beta - base.beta) * SOFT_STAB_NUDGE;
@@ -228,8 +242,8 @@ export default function MotionPreviewPage() {
         Live Motion Detection Preview
       </h1>
 
-      {/* Motion status — only when permission granted */}
-      {granted && (
+      {/* Motion status — only after permission and at least one motion event */}
+      {granted && motionReceived && (
         <div
           style={{
             position: "relative",
@@ -241,12 +255,12 @@ export default function MotionPreviewPage() {
             gap: 6
           }}
         >
-          <span aria-hidden>🟢</span>
+          <span aria-hidden>●</span>
           <span>Motion Active</span>
         </div>
       )}
 
-      {/* PhoneTiltPreview — flexGrow centers it vertically; double-tap area for recalibration */}
+      {/* PhoneTiltPreview — long-press on preview area to recalibrate */}
       <div
         style={{
           position: "relative",
@@ -270,6 +284,8 @@ export default function MotionPreviewPage() {
             touchAction: "manipulation"
           }}
           onPointerDown={handlePreviewPointerDown}
+          onPointerUp={handlePreviewPointerUp}
+          onPointerCancel={handlePreviewPointerCancel}
         >
         {permissionState === "needs_gesture" ? (
           // iOS gate: show tap-to-enable prompt over the phone shell
