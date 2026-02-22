@@ -73,7 +73,7 @@ export default function VoiceVerificationPage() {
   const passed = result ? result.riskLevel !== "high" : false;
 
   return (
-    <main className="min-h-dvh px-4 pb-10 pt-8">
+    <main className="h-dvh overflow-hidden px-4 py-4">
       <div className="mx-auto w-full max-w-[440px]">
         <div className="relative overflow-hidden rounded-[30px] ring-1 ring-white/10">
           <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(16,185,129,0.18)_0%,rgba(56,189,248,0.14)_32%,rgba(0,0,0,1)_76%)]" />

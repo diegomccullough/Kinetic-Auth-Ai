@@ -6,135 +6,105 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
-const EXAGGERATION_MULTIPLIER = 2.0;
-const PERSPECTIVE_PX = 1200;
-const LERP_FACTOR = 0.08;
-
 type PhoneTiltPreviewProps = {
   beta: number;
   gamma: number;
-  /**
-   * Scales degrees → visual rotation degrees.
-   * Final transform uses rotateX(beta*factor) rotateY(gamma*factor).
-   */
-  factor?: number;
+  baselineBeta?: number;
+  baselineGamma?: number;
   reduceMotion?: boolean;
 };
 
-export default function PhoneTiltPreview({ beta, gamma, factor = 0.38, reduceMotion = false }: PhoneTiltPreviewProps) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const phoneRef = useRef<HTMLDivElement | null>(null);
-  const screenBgRef = useRef<HTMLDivElement | null>(null);
-
-  const latest = useRef({ beta: 0, gamma: 0 });
-  const smoothed = useRef({ beta: 0, gamma: 0 });
-  const rafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    latest.current = { beta, gamma };
-  }, [beta, gamma]);
-
-  const baseShadow = useMemo(() => {
-    // Static shadow that looks good in absence of motion.
-    return "0 22px 70px rgba(0,0,0,0.65), 0 0 60px rgba(56,189,248,0.10)";
-  }, []);
+export default function PhoneTiltPreview({
+  beta,
+  gamma,
+  baselineBeta,
+  baselineGamma,
+  reduceMotion = false
+}: PhoneTiltPreviewProps) {
+  const internalBaselineRef = useRef<{ beta: number; gamma: number } | null>(null);
 
   useEffect(() => {
-    const root = rootRef.current;
-    const phone = phoneRef.current;
-    const screenBg = screenBgRef.current;
-    if (!root || !phone || !screenBg) return;
+    if (baselineBeta !== undefined && baselineGamma !== undefined) return;
+    if (internalBaselineRef.current) return;
+    internalBaselineRef.current = { beta, gamma };
+  }, [baselineBeta, baselineGamma, beta, gamma]);
 
-    if (reduceMotion) {
-      root.style.boxShadow = baseShadow;
-      phone.style.transform = `perspective(${PERSPECTIVE_PX}px) rotateX(0deg) rotateY(0deg) translateZ(0px)`;
-      screenBg.style.transform = "translate3d(0px, 0px, 0) scale(1.04)";
-      return;
-    }
+  const base = useMemo(() => {
+    if (baselineBeta !== undefined && baselineGamma !== undefined) return { beta: baselineBeta, gamma: baselineGamma };
+    return internalBaselineRef.current ?? { beta, gamma };
+  }, [baselineBeta, baselineGamma, beta, gamma]);
 
-    let last = 0;
-    const tick = (t: number) => {
-      rafRef.current = window.requestAnimationFrame(tick);
-      if (t - last < 1000 / 60) return;
-      last = t;
+  const relativeBeta = beta - base.beta;
+  const relativeGamma = gamma - base.gamma;
 
-      const targetBeta = clamp(latest.current.beta, -90, 90);
-      const targetGamma = clamp(latest.current.gamma, -90, 90);
+  const rx = reduceMotion ? 0 : clamp(relativeBeta * 3.2, -60, 60);
+  const ry = reduceMotion ? 0 : clamp(relativeGamma * 3.2, -60, 60);
 
-      // Smooth interpolation (avoid jitter).
-      smoothed.current.beta = smoothed.current.beta + (targetBeta - smoothed.current.beta) * LERP_FACTOR;
-      smoothed.current.gamma = smoothed.current.gamma + (targetGamma - smoothed.current.gamma) * LERP_FACTOR;
+  const mag = Math.sqrt(rx * rx + ry * ry);
+  const mag01 = clamp(mag / 75, 0, 1);
 
-      const b = smoothed.current.beta;
-      const g = smoothed.current.gamma;
+  const edgeGlow = 0.14 + mag01 * 0.34;
+  const glowBlur = 42 + mag01 * 46;
+  const shadowBlur = 70 + mag01 * 64;
+  const shadowY = 20 + mag01 * 10;
 
-      const rx = clamp(b * factor * EXAGGERATION_MULTIPLIER, -18, 18);
-      const ry = clamp(g * factor * EXAGGERATION_MULTIPLIER, -22, 22);
+  const bgShiftX = clamp(ry / 6, -12, 12);
+  const bgShiftY = clamp(rx / 7, -10, 10);
 
-      // Parallax offsets for inner screen layers.
-      const px = clamp(-g * 0.55, -18, 18);
-      const py = clamp(-b * 0.35, -14, 14);
-
-      const lift = 8;
-      phone.style.transform = `perspective(${PERSPECTIVE_PX}px) rotateX(${rx}deg) rotateY(${ry}deg) translateZ(${lift}px)`;
-
-      // Dynamic shadow: reacts to tilt.
-      const sx = clamp(ry * 0.9, -18, 18);
-      const sy = clamp(rx * 1.1, -18, 18);
-      const blur = 64 + Math.min(34, Math.abs(rx) + Math.abs(ry)) * 0.9;
-      const glow = 0.12 + Math.min(0.18, (Math.abs(rx) + Math.abs(ry)) / 120);
-      root.style.boxShadow = `${sx}px ${18 + sy}px ${blur}px rgba(0,0,0,0.55), 0 0 70px rgba(56,189,248,${glow})`;
-
-      // Background parallax for polish.
-      screenBg.style.transform = `translate3d(${px}px, ${py}px, 0) scale(1.08)`;
-    };
-
-    root.style.boxShadow = baseShadow;
-    rafRef.current = window.requestAnimationFrame(tick);
-
-    return () => {
-      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    };
-  }, [baseShadow, factor, reduceMotion]);
+  const phoneTransform = `perspective(1400px) rotateX(${rx}deg) rotateY(${ry}deg)`;
+  const baseShadow = `0 ${shadowY}px ${shadowBlur}px rgba(0,0,0,0.65), 0 0 ${glowBlur}px rgba(56,189,248,${edgeGlow})`;
 
   return (
-    <div ref={rootRef} className="relative mx-auto h-[260px] w-[260px] rounded-[34px]">
-      <div className="absolute inset-0 rounded-[34px] bg-[radial-gradient(circle_at_50%_35%,rgba(255,255,255,0.10)_0%,rgba(0,0,0,0)_62%)] blur-2xl" />
+    <div className="relative mx-auto flex h-[56dvh] w-full items-center justify-center overflow-hidden">
+      <div
+        className="absolute inset-0"
+        style={{
+          transform: `translate3d(${bgShiftX}px, ${bgShiftY}px, 0)`,
+          transition: "none"
+        }}
+        aria-hidden="true"
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(90%_90%_at_50%_30%,rgba(56,189,248,0.22)_0%,rgba(99,102,241,0.14)_32%,rgba(0,0,0,0)_72%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_65%_60%,rgba(16,185,129,0.16)_0%,rgba(0,0,0,0)_58%)]" />
+      </div>
 
-      <div className="absolute inset-0 grid place-items-center">
-        <div
-          ref={phoneRef}
-          className="relative h-[230px] w-[132px] rounded-[28px] bg-gradient-to-b from-white/10 to-white/[0.02] ring-1 ring-white/15"
-          style={{ transformStyle: "preserve-3d", willChange: "transform" }}
-        >
-          {/* Glass edge */}
-          <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(120%_90%_at_50%_0%,rgba(56,189,248,0.16)_0%,rgba(99,102,241,0.09)_34%,rgba(0,0,0,0)_70%)]" />
+      <div
+        className="relative w-[75vw] max-w-[480px] select-none"
+        style={{
+          aspectRatio: "9 / 19.5",
+          transform: phoneTransform,
+          transformStyle: "preserve-3d",
+          boxShadow: baseShadow,
+          borderRadius: 34,
+          transition: "none",
+          willChange: "transform, box-shadow"
+        }}
+      >
+        <div className="absolute inset-0 rounded-[34px] bg-gradient-to-b from-white/14 to-white/[0.03] ring-1 ring-white/20" />
 
-          {/* Screen well */}
-          <div className="absolute inset-[10px] overflow-hidden rounded-[22px] bg-black/60 ring-1 ring-white/10">
-            <div ref={screenBgRef} className="absolute inset-0 will-change-transform">
-              <div className="absolute -inset-10 bg-[radial-gradient(circle_at_30%_20%,rgba(56,189,248,0.30)_0%,rgba(99,102,241,0.14)_30%,rgba(0,0,0,1)_68%)]" />
-              <div className="absolute -inset-10 bg-[radial-gradient(circle_at_70%_65%,rgba(16,185,129,0.18)_0%,rgba(0,0,0,0)_55%)] opacity-70" />
-            </div>
-
-            {/* Subtle scanline/noise vibe */}
-            <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.04),rgba(255,255,255,0.0))] opacity-40" />
-            <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_0px,rgba(255,255,255,0)_2px)] opacity-[0.08]" />
-
-            {/* HUD chip */}
-            <div className="absolute left-3 top-3 rounded-2xl bg-white/5 px-2.5 py-1.5 ring-1 ring-white/10">
-              <p className="text-[10px] font-semibold tracking-[0.20em] text-white/60">MOTION</p>
-            </div>
-            <div className="absolute bottom-4 left-1/2 h-9 w-[88px] -translate-x-1/2 rounded-2xl bg-white/[0.04] ring-1 ring-white/10" />
+        <div className="absolute inset-[10px] overflow-hidden rounded-[26px] bg-black/70 ring-1 ring-white/12">
+          <div
+            className="absolute -inset-12"
+            style={{
+              transform: `translate3d(${-bgShiftX * 1.2}px, ${-bgShiftY * 1.2}px, 0)`,
+              transition: "none",
+              willChange: "transform"
+            }}
+          >
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(56,189,248,0.42)_0%,rgba(99,102,241,0.16)_35%,rgba(0,0,0,1)_70%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(16,185,129,0.22)_0%,rgba(0,0,0,0)_55%)] opacity-80" />
           </div>
 
-          {/* Speaker notch */}
-          <div className="absolute left-1/2 top-3 h-2 w-12 -translate-x-1/2 rounded-full bg-white/10 ring-1 ring-white/10" />
+          <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.06),rgba(255,255,255,0.0))] opacity-40" />
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_0px,rgba(255,255,255,0)_2px)] opacity-[0.10]" />
 
-          {/* Glass highlight */}
-          <div className="pointer-events-none absolute inset-0 rounded-[28px] bg-[linear-gradient(135deg,rgba(255,255,255,0.10)_0%,rgba(255,255,255,0.02)_40%,rgba(255,255,255,0)_70%)]" />
+          <div className="absolute left-4 top-4 rounded-2xl bg-white/5 px-3 py-2 ring-1 ring-white/12">
+            <p className="text-[10px] font-semibold tracking-[0.22em] text-white/70">KINETIC</p>
+          </div>
         </div>
+
+        <div className="absolute left-1/2 top-[14px] h-2.5 w-16 -translate-x-1/2 rounded-full bg-white/10 ring-1 ring-white/10" />
+        <div className="pointer-events-none absolute inset-0 rounded-[34px] bg-[linear-gradient(135deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.03)_44%,rgba(255,255,255,0)_72%)]" />
       </div>
     </div>
   );

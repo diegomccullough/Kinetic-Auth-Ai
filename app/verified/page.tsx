@@ -2,7 +2,8 @@ import Link from "next/link";
 
 export default function VerifiedPage() {
   return (
-    <main className="min-h-dvh bg-black px-4 py-10">
+    <main className="h-dvh overflow-hidden bg-black px-4">
+      <div className="flex h-full items-center justify-center">
       <div className="mx-auto w-full max-w-[430px] rounded-[28px] bg-white/[0.03] px-5 py-6 ring-1 ring-white/10">
         <h1 className="text-xl font-semibold tracking-tight">Verified</h1>
         <p className="mt-2 text-sm text-white/70">Success callback fired.</p>
@@ -12,6 +13,7 @@ export default function VerifiedPage() {
         >
           Back to verification
         </Link>
+      </div>
       </div>
     </main>
   );

@@ -15,7 +15,7 @@ type Baseline = { beta: number; gamma: number; alpha: number };
 const MAX_FPS = 60;
 const CLAMP_TILT_DEG = 35;
 
-const DIRECTED_HOLD_MS = 250;
+const DIRECTED_HOLD_MS = 200;
 const DIRECTED_THRESHOLD_DEG = 15;
 
 const MAX_OFFSET_PX = 92;
@@ -100,8 +100,7 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
     () =>
       [
         { id: "left", title: "Tilt LEFT", axis: "gamma" as const, dir: -1 },
-        { id: "right", title: "Tilt RIGHT", axis: "gamma" as const, dir: 1 },
-        { id: "forward", title: "Tilt FORWARD", axis: "beta" as const, dir: 1 }
+        { id: "right", title: "Tilt RIGHT", axis: "gamma" as const, dir: 1 }
       ] as const,
     []
   );
@@ -111,11 +110,10 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
   const directedPromptStartRef = useRef<number | null>(null);
   const directedAdvanceTimerRef = useRef<number | null>(null);
   const [directedCheckKey, setDirectedCheckKey] = useState(0);
-  const [lastPassed, setLastPassed] = useState<null | "left" | "right" | "forward">(null);
+  const [lastPassed, setLastPassed] = useState<null | "left" | "right">(null);
   const [timings, setTimings] = useState<{
     timeToLeft?: number;
     timeToRight?: number;
-    timeToForward?: number;
   }>({});
 
   const stableMsRef = useRef(0);
@@ -141,6 +139,8 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
       return { left, top, dx, dy, rot, cls };
     });
   }, [confettiKey]);
+
+  const [previewBaseline, setPreviewBaseline] = useState<{ beta: number; gamma: number } | null>(null);
 
   const startVerification = useCallback(async () => {
     const res = await requestPermission();
@@ -179,6 +179,7 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
     setLastPassed(null);
     setTimings({});
     directedBaselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
+    setPreviewBaseline({ beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma });
     if (directedAdvanceTimerRef.current) window.clearTimeout(directedAdvanceTimerRef.current);
     directedAdvanceTimerRef.current = null;
   }, [step, smoothedRef]);
@@ -187,10 +188,16 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
   useEffect(() => {
     if (step !== "directed") return;
     directedBaselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
+    setPreviewBaseline({ beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma });
     directedHoldRef.current = 0;
     setDirectedHoldPct(0);
     directedPromptStartRef.current = performance.now();
   }, [directedIdx, step, smoothedRef]);
+
+  useEffect(() => {
+    if (step !== "freeTilt") return;
+    setPreviewBaseline({ beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma });
+  }, [step, smoothedRef]);
 
   useEffect(() => {
     // Reset motion window when entering motion-heavy steps.
@@ -237,9 +244,7 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
         const ok =
           current.id === "left"
             ? dGamma < -DIRECTED_THRESHOLD_DEG
-            : current.id === "right"
-              ? dGamma > DIRECTED_THRESHOLD_DEG
-              : dBeta > DIRECTED_THRESHOLD_DEG;
+            : dGamma > DIRECTED_THRESHOLD_DEG;
 
         directedHoldRef.current = ok ? directedHoldRef.current + dtMs : 0;
         directedHoldRef.current = clamp(directedHoldRef.current, 0, DIRECTED_HOLD_MS);
@@ -252,12 +257,11 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
           const elapsed = Math.max(0, performance.now() - started);
 
           setLastPassed(id);
-          vibrate(14);
+          vibrate(30);
           setDirectedCheckKey((k) => k + 1);
           setTimings((prev) => {
             if (id === "left" && prev.timeToLeft === undefined) return { ...prev, timeToLeft: Math.round(elapsed) };
             if (id === "right" && prev.timeToRight === undefined) return { ...prev, timeToRight: Math.round(elapsed) };
-            if (id === "forward" && prev.timeToForward === undefined) return { ...prev, timeToForward: Math.round(elapsed) };
             return prev;
           });
 
@@ -365,6 +369,7 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
   }, [smoothedBeta, smoothedGamma]);
 
   const directed = directedSequence[directedIdx] ?? directedSequence[0];
+  const directedArrow = directed?.id === "left" ? "←" : "→";
 
   return (
     <div className="relative">
@@ -378,7 +383,7 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
         <ProgressDots step={step} />
       </div>
 
-      <div className="rounded-[24px] bg-white/[0.04] p-4 ring-1 ring-white/10">
+      <div className="rounded-[24px] bg-white/[0.04] p-4 ring-1 ring-white/10 overflow-hidden">
         <AnimatePresence mode="popLayout" initial={false}>
           {step === "intro" ? (
             <motion.div
@@ -473,25 +478,22 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
               transition={{ duration: 0.28, ease: "easeOut" }}
-              className="space-y-4"
+              className="flex h-[68dvh] flex-col overflow-hidden"
             >
               <div className="text-center">
                 <p className="text-xs font-semibold tracking-[0.22em] text-white/60">STEP 1</p>
-                <p className="mt-2 text-xl font-semibold tracking-tight text-white">Tilt your phone</p>
-                <p className="mt-1 text-sm text-white/65">Try gentle movements. The model mirrors your orientation.</p>
+                <p className="mt-2 text-4xl font-semibold tracking-tight text-white">Tilt your phone</p>
+                <p className="mt-2 text-sm text-white/65">Movement should feel instant and sharp.</p>
               </div>
 
-              <PhoneTiltPreview beta={smoothedBeta} gamma={smoothedGamma} reduceMotion={!!reduceMotion} />
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
-                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">BETA</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{beta.toFixed(1)}°</p>
-                </div>
-                <div className="rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
-                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">GAMMA</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{gamma.toFixed(1)}°</p>
-                </div>
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <PhoneTiltPreview
+                  beta={beta}
+                  gamma={gamma}
+                  baselineBeta={previewBaseline?.beta}
+                  baselineGamma={previewBaseline?.gamma}
+                  reduceMotion={!!reduceMotion}
+                />
               </div>
 
               <div className="space-y-3">
@@ -526,16 +528,17 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
               transition={{ duration: 0.28, ease: "easeOut" }}
-              className="space-y-4"
+              className="flex h-[68dvh] flex-col overflow-hidden"
             >
               <div className="text-center">
                 <p className="text-xs font-semibold tracking-[0.22em] text-white/60">STEP 2</p>
-                <p className="mt-2 text-xl font-semibold tracking-tight text-white">{directed.title}</p>
-                <p className="mt-1 text-sm text-white/65">Follow the prompts. Hold briefly to confirm.</p>
+                <p className="mt-2 text-7xl font-semibold leading-none tracking-tight text-white">{directedArrow}</p>
+                <p className="mt-2 text-4xl font-semibold tracking-tight text-white">{directed.title}</p>
+                <p className="mt-2 text-sm text-white/65">Hold for {DIRECTED_HOLD_MS}ms to confirm.</p>
               </div>
 
-              <div className="relative">
-                <PhoneTiltPreview beta={smoothedBeta} gamma={smoothedGamma} />
+              <div className="relative min-h-0 flex-1 overflow-hidden">
+                <PhoneTiltPreview beta={beta} gamma={gamma} baselineBeta={previewBaseline?.beta} baselineGamma={previewBaseline?.gamma} />
                 <AnimatePresence>
                   {lastPassed ? (
                     <motion.div
@@ -569,51 +572,22 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                 </AnimatePresence>
               </div>
 
-              <Card>
-                <div className="p-4">
-                  <div className="flex items-center justify-between text-xs text-white/55">
-                    <span>Progress</span>
-                    <span className="tabular-nums">{directedIdx + 1}/3</span>
-                  </div>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {[0, 1, 2].map((i) => {
-                      const done = i < directedIdx;
-                      const active = i === directedIdx;
-                      return (
-                        <div key={i} className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                          <motion.div
-                            className={[
-                              "h-full rounded-full",
-                              done ? "bg-emerald-300/90" : active ? "bg-gradient-to-r from-sky-400 to-indigo-400" : "bg-white/10"
-                            ].join(" ")}
-                            initial={false}
-                            animate={{ width: done ? "100%" : active ? `${Math.round(directedHoldPct * 100)}%` : "0%" }}
-                            transition={{ type: "tween", duration: 0.16, ease: "linear" }}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-white/55">
-                    <span>Hold to confirm</span>
-                    <span className="tabular-nums">{Math.round(directedHoldPct * 100)}%</span>
-                  </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-white/55">
-                    <div className="rounded-xl bg-white/[0.03] px-3 py-2 ring-1 ring-white/10">
-                      <p className="text-[10px] font-semibold tracking-[0.22em] text-white/55">LEFT</p>
-                      <p className="mt-0.5 font-semibold tabular-nums">{timings.timeToLeft ?? "—"}ms</p>
-                    </div>
-                    <div className="rounded-xl bg-white/[0.03] px-3 py-2 ring-1 ring-white/10">
-                      <p className="text-[10px] font-semibold tracking-[0.22em] text-white/55">RIGHT</p>
-                      <p className="mt-0.5 font-semibold tabular-nums">{timings.timeToRight ?? "—"}ms</p>
-                    </div>
-                    <div className="rounded-xl bg-white/[0.03] px-3 py-2 ring-1 ring-white/10">
-                      <p className="text-[10px] font-semibold tracking-[0.22em] text-white/55">FWD</p>
-                      <p className="mt-0.5 font-semibold tabular-nums">{timings.timeToForward ?? "—"}ms</p>
-                    </div>
-                  </div>
+              <div className="rounded-2xl bg-black/25 p-3 ring-1 ring-white/10">
+                <div className="flex items-center justify-between text-xs text-white/55">
+                  <span>
+                    Progress <span className="font-semibold text-white/80">{directedIdx + 1}/2</span>
+                  </span>
+                  <span className="tabular-nums">{Math.round(directedHoldPct * 100)}%</span>
                 </div>
-              </Card>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                  <motion.div
+                    className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400"
+                    initial={false}
+                    animate={{ width: `${Math.round(directedHoldPct * 100)}%` }}
+                    transition={{ type: "tween", duration: 0.12, ease: "linear" }}
+                  />
+                </div>
+              </div>
 
               <div className="space-y-3">
                 <button
@@ -640,16 +614,16 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
               transition={{ duration: 0.28, ease: "easeOut" }}
-              className="space-y-4"
+              className="flex h-[68dvh] flex-col overflow-hidden"
             >
               <div className="text-center">
                 <p className="text-xs font-semibold tracking-[0.22em] text-white/60">STEP 3</p>
-                <p className="mt-2 text-xl font-semibold tracking-tight text-white">Hold steady</p>
-                <p className="mt-1 text-sm text-white/65">Neutral is your current orientation. We measure stability relative to that baseline.</p>
+                <p className="mt-2 text-4xl font-semibold tracking-tight text-white">Hold steady</p>
+                <p className="mt-2 text-sm text-white/65">Keep the dot centered until complete.</p>
               </div>
 
               <div className="flex items-center justify-center">
-                <div className="relative h-[290px] w-[290px]">
+                <div className="relative h-[250px] w-[250px]">
                   <motion.div
                     className="absolute inset-0 rounded-full"
                     animate={{
@@ -684,8 +658,8 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                   </svg>
 
                   <div className="absolute inset-0 grid place-items-center">
-                    <div className="relative h-[242px] w-[242px] rounded-full">
-                      <div className="absolute left-1/2 top-1/2 h-[88px] w-[88px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/10" />
+                    <div className="relative h-[208px] w-[208px] rounded-full">
+                      <div className="absolute left-1/2 top-1/2 h-[78px] w-[78px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/10" />
                       <motion.div
                         className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-200 shadow-[0_0_22px_rgba(56,189,248,0.65)]"
                         animate={{ x: dot.x, y: dot.y, scale: stablePct >= 100 ? 1.25 : 1 }}
@@ -733,49 +707,18 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                 </div>
               </div>
 
-              <Card>
-                <div className="p-4">
-                  <div className="flex items-center justify-between text-xs text-white/55">
-                    <span>Avg deviation</span>
-                    <span className="tabular-nums">{avgDeviationDeg.toFixed(1)}°</span>
-                  </div>
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                    <motion.div
-                      className={[
-                        "h-full rounded-full",
-                        avgDeviationDeg < STABILITY_AVG_DEVIATION_DEG
-                          ? "bg-gradient-to-r from-emerald-300/90 to-sky-300/90"
-                          : "bg-gradient-to-r from-sky-400 to-indigo-400"
-                      ].join(" ")}
-                      initial={false}
-                      animate={{ width: `${Math.round(stabilityPct)}%` }}
-                      transition={{ type: "tween", duration: 0.16, ease: "linear" }}
-                    />
-                  </div>
-
-                  <div className="mt-3 flex items-center justify-between text-xs text-white/55">
-                    <span>Hold avg &lt; {STABILITY_AVG_DEVIATION_DEG}°</span>
-                    <span className="tabular-nums">{Math.round(stablePct)}%</span>
-                  </div>
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                    <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400"
-                      initial={false}
-                      animate={{ width: `${Math.round(stablePct)}%` }}
-                      transition={{ type: "tween", duration: 0.16, ease: "linear" }}
-                    />
-                  </div>
+              <div className="rounded-2xl bg-black/25 p-3 ring-1 ring-white/10">
+                <div className="flex items-center justify-between text-xs text-white/55">
+                  <span>Hold steady</span>
+                  <span className="tabular-nums">{Math.round(stablePct)}%</span>
                 </div>
-              </Card>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
-                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">Δ BETA</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{delta.beta.toFixed(1)}°</p>
-                </div>
-                <div className="rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
-                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">Δ GAMMA</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{delta.gamma.toFixed(1)}°</p>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                  <motion.div
+                    className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400"
+                    initial={false}
+                    animate={{ width: `${Math.round(stablePct)}%` }}
+                    transition={{ type: "tween", duration: 0.12, ease: "linear" }}
+                  />
                 </div>
               </div>
 
