@@ -16,11 +16,9 @@ function HomePageClient() {
   const [queue, setQueue] = useState(12483);
   const [viewing, setViewing] = useState(3218);
   const [ticketsLeft, setTicketsLeft] = useState(43);
-  const [pulse, setPulse] = useState(0);
-  const [secondsLeft, setSecondsLeft] = useState(134); // 02:14
+  const [secondsLeft, setSecondsLeft] = useState(134);
   const [unlockFx, setUnlockFx] = useState(false);
   const unlockSeenRef = useRef(false);
-
   const timersRef = useRef<number[]>([]);
 
   useEffect(() => {
@@ -31,23 +29,17 @@ function HomePageClient() {
   }, [reduceMotion]);
 
   useEffect(() => {
-    if (reduceMotion) return;
-    const id = window.setInterval(() => setPulse((p) => p + 1), 650);
-    return () => window.clearInterval(id);
-  }, [reduceMotion]);
-
-  useEffect(() => {
-    // live activity drift
     const id = window.setInterval(() => {
       setQueue((n) => n + 7 + Math.floor(Math.random() * 21));
-      setViewing((n) => Math.max(1200, n + (Math.random() > 0.5 ? 1 : -1) * (18 + Math.floor(Math.random() * 40))));
+      setViewing((n) =>
+        Math.max(1200, n + (Math.random() > 0.5 ? 1 : -1) * (18 + Math.floor(Math.random() * 40)))
+      );
     }, 900);
     return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
     if (reduceMotion) return;
-    // scarcity drop — cleanup clears recursive timeouts to avoid memory leaks
     const tick = () => {
       setTicketsLeft((n) => Math.max(0, n - (Math.random() > 0.55 ? 1 : 0)));
       const next = 1600 + Math.floor(Math.random() * 1600);
@@ -63,7 +55,6 @@ function HomePageClient() {
   }, [reduceMotion]);
 
   useEffect(() => {
-    // cart countdown
     const id = window.setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
     return () => window.clearInterval(id);
   }, []);
@@ -81,42 +72,42 @@ function HomePageClient() {
     return () => window.clearTimeout(id);
   }, [verified]);
 
-  const queueLabel = useMemo(() => `${queue.toLocaleString()} fans`, [queue]);
-  const viewingLabel = useMemo(() => `${viewing.toLocaleString()} viewing`, [viewing]);
-
   const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
   const ss = String(secondsLeft % 60).padStart(2, "0");
   const urgent = secondsLeft <= 30;
 
+  const queueLabel = useMemo(() => `${queue.toLocaleString()} fans`, [queue]);
+  const viewingLabel = useMemo(() => `${viewing.toLocaleString()} viewing`, [viewing]);
+
   return (
     <main className="app-shell text-white">
       <div className="screen-card">
+
+        {/* ── Event header ────────────────────────────────────── */}
         <motion.header
           initial={reduceMotion ? false : { opacity: 0, y: 10 }}
           animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
           transition={{ duration: 0.45, ease: "easeOut" }}
           className="relative overflow-hidden rounded-[28px] bg-white/[0.05] p-5 ring-1 ring-white/10 backdrop-blur"
         >
-          <div className="absolute inset-0 bg-[radial-gradient(80%_80%_at_40%_0%,rgba(56,189,248,0.18)_0%,rgba(99,102,241,0.10)_35%,rgba(0,0,0,0)_72%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(80%_80%_at_40%_0%,rgba(56,189,248,0.16)_0%,rgba(99,102,241,0.08)_35%,rgba(0,0,0,0)_72%)]" />
           <div className="relative">
-            <p className="text-xs font-semibold tracking-[0.30em] text-white/60">ONSLAUGHT TOUR</p>
+            <p className="text-xs font-semibold tracking-[0.30em] text-white/55">ONSLAUGHT TOUR</p>
             <h1 className="mt-3 text-balance text-4xl font-semibold leading-[1.02] tracking-tight">
-              BISON LIVE <span className="text-white/70">/ HOMEcoming night</span>
+              BISON LIVE <span className="text-white/65">/ HOMEcoming night</span>
             </h1>
-            <p className="mt-2 text-sm text-white/65">Fri • Oct 17 • Neon City Arena • 8:30 PM</p>
+            <p className="mt-2 text-sm text-white/60">Fri • Oct 17 • Neon City Arena • 8:30 PM</p>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
+              {/* Queue */}
               <div className="rounded-2xl bg-black/30 px-4 py-3 ring-1 ring-white/10">
-                <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">FANS IN QUEUE</p>
+                <p className="text-[10px] font-semibold tracking-[0.22em] text-white/55">FANS IN QUEUE</p>
                 <div className="mt-1 flex items-center gap-2">
                   <motion.div
-                    className={[
-                      "rounded-full bg-sky-200",
-                      DEMO_MODE ? "h-3 w-3" : "h-2 w-2"
-                    ].join(" ")}
+                    className="h-2 w-2 rounded-full bg-sky-300"
                     animate={reduceMotion ? undefined : { opacity: [0.35, 1, 0.35], scale: [1, 1.2, 1] }}
                     transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-                    style={{ boxShadow: DEMO_MODE ? "0 0 34px rgba(56,189,248,0.90)" : "0 0 18px rgba(56,189,248,0.70)" }}
+                    style={{ boxShadow: "0 0 14px rgba(56,189,248,0.70)" }}
                     aria-hidden="true"
                   />
                   {DEMO_MODE ? (
@@ -143,8 +134,9 @@ function HomePageClient() {
                 </div>
               </div>
 
+              {/* Activity */}
               <div className="rounded-2xl bg-black/30 px-4 py-3 ring-1 ring-white/10">
-                <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">ACTIVITY</p>
+                <p className="text-[10px] font-semibold tracking-[0.22em] text-white/55">ACTIVITY</p>
                 <div className="mt-1 flex items-baseline justify-between">
                   {DEMO_MODE ? (
                     <AnimatedNumber
@@ -167,56 +159,34 @@ function HomePageClient() {
                       </motion.span>
                     </AnimatePresence>
                   )}
-                  <span className="text-xs text-white/55">this section</span>
+                  <span className="text-xs text-white/50">this section</span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-between rounded-2xl bg-rose-500/15 px-4 py-3 ring-1 ring-rose-300/20">
+            {/* Cart countdown */}
+            <div className="mt-3 flex items-center justify-between rounded-2xl bg-rose-500/12 px-4 py-3 ring-1 ring-rose-300/18">
               <div>
-                <p className="text-[10px] font-semibold tracking-[0.22em] text-rose-200/90">URGENCY</p>
+                <p className="text-[10px] font-semibold tracking-[0.22em] text-rose-200/80">URGENCY</p>
                 <p className="mt-1 text-sm font-semibold text-rose-100">
                   Cart expires in{" "}
-                  {DEMO_MODE && !reduceMotion ? (
-                    <motion.span className="inline-flex items-baseline gap-0.5 tabular-nums">
+                  <span className={["tabular-nums", urgent && !reduceMotion ? "text-rose-200" : ""].join(" ")}>
+                    {urgent && !reduceMotion ? (
                       <motion.span
-                        className="bg-gradient-to-r from-rose-200 via-white to-rose-200 bg-clip-text text-transparent"
-                        style={{ backgroundSize: "220% 100%" }}
-                        animate={{ backgroundPosition: ["0% 0%", "220% 0%"] }}
-                        transition={{ duration: 1.35, repeat: Infinity, ease: "linear" }}
+                        className="inline-block"
+                        animate={{ scale: [1, 1.03, 1], opacity: [0.9, 1, 0.9] }}
+                        transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
                       >
-                        {urgent && !reduceMotion ? (
-                          <motion.span
-                            className="inline-block"
-                            animate={{ scale: [1, 1.035, 1], opacity: [0.92, 1, 0.92] }}
-                            transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
-                          >
-                            {mm}:{ss}
-                          </motion.span>
-                        ) : (
-                          `${mm}:${ss}`
-                        )}
+                        {mm}:{ss}
                       </motion.span>
-                      {urgent && !reduceMotion ? (
-                        <motion.span
-                          className="ml-1 text-rose-100/80"
-                          animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.04, 1] }}
-                          transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
-                          aria-hidden="true"
-                        >
-                          •
-                        </motion.span>
-                      ) : null}
-                    </motion.span>
-                  ) : (
-                    <span className="tabular-nums">
-                      {mm}:{ss}
-                    </span>
-                  )}
+                    ) : (
+                      `${mm}:${ss}`
+                    )}
+                  </span>
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">SCARCITY</p>
+                <p className="text-[10px] font-semibold tracking-[0.22em] text-white/55">SCARCITY</p>
                 <p className="mt-1 text-sm font-semibold text-white">
                   Only{" "}
                   {DEMO_MODE ? (
@@ -239,10 +209,10 @@ function HomePageClient() {
                 </p>
               </div>
             </div>
-
           </div>
         </motion.header>
 
+        {/* ── Seat + order section ─────────────────────────────── */}
         <motion.section
           initial={reduceMotion ? false : { opacity: 0, y: 10 }}
           animate={
@@ -253,41 +223,45 @@ function HomePageClient() {
                   y: 0,
                   boxShadow:
                     verified && unlockFx
-                      ? ["0 0 0 rgba(0,0,0,0)", "0 0 110px rgba(16,185,129,0.14)", "0 0 0 rgba(0,0,0,0)"]
+                      ? ["0 0 0 rgba(0,0,0,0)", "0 0 100px rgba(52,211,153,0.18)", "0 0 0 rgba(0,0,0,0)"]
                       : undefined
                 }
           }
           transition={{ delay: 0.05, duration: 0.45, ease: "easeOut" }}
-          className="relative min-h-0 flex-1 overflow-hidden rounded-[28px] bg-white/[0.04] p-4 ring-1 ring-white/10 backdrop-blur"
+          className="relative overflow-hidden rounded-[28px] bg-white/[0.04] p-5 ring-1 ring-white/10 backdrop-blur"
         >
-          <div className="flex h-full flex-col gap-4 overflow-hidden">
-            <div className="seat-row">
+          <div className="flex flex-col gap-5">
+            {/* Seat row */}
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold tracking-[0.22em] text-white/60">SEAT</p>
+                <p className="text-xs font-semibold tracking-[0.22em] text-white/55">SEAT</p>
                 <p className="mt-2 text-xl font-semibold tracking-tight">Section B • Row 3</p>
-                <p className="mt-1 text-sm text-white/65">
-                  1 ticket per customer • limited release
-                </p>
+                <p className="mt-1 text-sm text-white/60">1 ticket per customer • limited release</p>
               </div>
-              <div className="price-block">
+              <div className="flex flex-col items-end gap-2">
                 <div className="text-right">
-                  <p className="text-xs font-semibold tracking-[0.22em] text-white/60">PRICE</p>
+                  <p className="text-xs font-semibold tracking-[0.22em] text-white/55">PRICE</p>
                   <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">$299</p>
-                  <p className="mt-1 text-xs text-white/55">incl. fees</p>
+                  <p className="mt-1 text-xs text-white/50">incl. fees</p>
                 </div>
+
+                {/* Single mint verified badge */}
                 <AnimatePresence initial={false}>
                   {verified ? (
                     <motion.div
                       key="verified-badge"
-                      initial={reduceMotion ? false : { opacity: 0, y: 10, scale: 0.98 }}
+                      initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.95 }}
                       animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
-                      exit={reduceMotion ? undefined : { opacity: 0, y: -10, scale: 0.98 }}
-                      transition={reduceMotion ? undefined : { type: "spring", stiffness: 220, damping: 20, mass: 0.6 }}
-                      className="inline-flex items-center justify-end gap-2 rounded-full bg-emerald-300/15 px-3 py-2 text-right ring-1 ring-emerald-200/25"
-                      style={{ boxShadow: "0 0 40px rgba(52,211,153,0.14)" }}
+                      exit={reduceMotion ? undefined : { opacity: 0, y: -8, scale: 0.95 }}
+                      transition={reduceMotion ? undefined : { type: "spring", stiffness: 240, damping: 22, mass: 0.55 }}
+                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 ring-1 ring-emerald-300/30"
+                      style={{
+                        background: "rgba(52,211,153,0.12)",
+                        boxShadow: "0 0 28px rgba(52,211,153,0.18)"
+                      }}
                     >
-                      <span className="text-sm text-emerald-100">✔</span>
-                      <span className="text-[11px] font-semibold tracking-[0.18em] text-emerald-100/90">
+                      <span className="text-xs text-emerald-300">✔</span>
+                      <span className="text-[11px] font-semibold tracking-[0.16em] text-emerald-200">
                         HUMAN VERIFIED
                       </span>
                     </motion.div>
@@ -296,75 +270,78 @@ function HomePageClient() {
               </div>
             </div>
 
-            <div className="rounded-2xl bg-amber-400/10 px-4 py-3 ring-1 ring-amber-300/20">
+            {/* Risk banner */}
+            <div className="rounded-2xl bg-amber-400/10 px-4 py-3 ring-1 ring-amber-300/18">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-amber-100">
-                  {DEMO_MODE && !reduceMotion ? (
-                    <motion.span
-                      className="bg-gradient-to-r from-amber-200 via-white to-amber-200 bg-clip-text text-transparent"
-                      style={{ backgroundSize: "220% 100%" }}
-                      animate={{ backgroundPosition: ["0% 0%", "220% 0%"] }}
-                      transition={{ duration: 1.8, repeat: Infinity, ease: "linear" }}
-                    >
-                      High demand — quick verification required
-                    </motion.span>
-                  ) : (
-                    "High demand — quick verification required"
-                  )}
+                  High demand — quick verification required
                 </p>
-                <span className="rounded-full bg-amber-300/20 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] text-amber-100">
+                <span className="shrink-0 rounded-full bg-amber-300/18 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] text-amber-100">
                   RISK
                 </span>
               </div>
             </div>
 
-            <div className="mt-auto space-y-3">
-              <motion.button
-                type="button"
-                onClick={() => {
-                  if (!verified) {
-                    router.push("/verify");
-                    return;
-                  }
-                  setPlaced(true);
-                }}
-                className={[
-                  "relative inline-flex h-14 w-full items-center justify-center overflow-hidden rounded-2xl px-4 text-sm font-semibold ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black",
-                  verified ? "bg-emerald-300 text-black ring-emerald-200/20" : "bg-white/10 text-white ring-white/15 hover:bg-white/15"
-                ].join(" ")}
-                animate={
-                  reduceMotion
-                    ? undefined
-                    : {
-                        boxShadow: verified
-                          ? "0 0 90px rgba(52,211,153,0.22)"
-                          : "0 0 0 rgba(0,0,0,0)"
-                      }
+            {/* Single primary CTA */}
+            <motion.button
+              type="button"
+              onClick={() => {
+                if (!verified) {
+                  router.push("/verify");
+                  return;
                 }
-                transition={reduceMotion ? undefined : { type: "spring", stiffness: 220, damping: 22, mass: 0.65 }}
-              >
-                <AnimatePresence>
-                  {verified && unlockFx && !reduceMotion ? (
-                    <motion.div
-                      key="buy-shimmer"
-                      className="pointer-events-none absolute inset-0 opacity-70"
-                      initial={{ x: "-120%" }}
-                      animate={{ x: "120%" }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 1.05, ease: "easeOut" }}
-                      style={{
-                        background:
-                          "linear-gradient(115deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.35) 18%, rgba(255,255,255,0) 36%)"
-                      }}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                </AnimatePresence>
-                {placed && verified ? "Order placed" : "Place Order"}
-              </motion.button>
-            </div>
+                setPlaced(true);
+              }}
+              className="relative inline-flex h-14 w-full items-center justify-center overflow-hidden rounded-2xl text-sm font-semibold tracking-tight ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+              style={
+                verified
+                  ? { background: "#34D399", color: "#000" }
+                  : { background: "rgba(255,255,255,0.08)", color: "#fff" }
+              }
+              animate={
+                reduceMotion
+                  ? undefined
+                  : {
+                      boxShadow: verified
+                        ? [
+                            "0 0 40px rgba(52,211,153,0.28), 0 8px 40px rgba(0,0,0,0.35)",
+                            "0 0 80px rgba(52,211,153,0.50), 0 8px 40px rgba(0,0,0,0.35)",
+                            "0 0 40px rgba(52,211,153,0.28), 0 8px 40px rgba(0,0,0,0.35)"
+                          ]
+                        : "0 0 0 rgba(0,0,0,0)"
+                    }
+              }
+              transition={
+                reduceMotion
+                  ? undefined
+                  : verified
+                  ? { duration: 2.0, repeat: Infinity, ease: "easeInOut" }
+                  : { type: "spring", stiffness: 220, damping: 22 }
+              }
+            >
+              {/* Shimmer on unlock */}
+              <AnimatePresence>
+                {verified && unlockFx && !reduceMotion ? (
+                  <motion.div
+                    key="shimmer"
+                    className="pointer-events-none absolute inset-0 opacity-70"
+                    initial={{ x: "-120%" }}
+                    animate={{ x: "120%" }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 1.05, ease: "easeOut" }}
+                    style={{
+                      background:
+                        "linear-gradient(115deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.38) 18%, rgba(255,255,255,0) 36%)"
+                    }}
+                    aria-hidden="true"
+                  />
+                ) : null}
+              </AnimatePresence>
+              {placed && verified ? "Order Placed ✔" : "Place Order"}
+            </motion.button>
           </div>
         </motion.section>
+
       </div>
     </main>
   );
@@ -375,7 +352,7 @@ function HomePageFallback() {
     <main className="app-shell text-white">
       <div className="screen-card">
         <div className="h-[260px] rounded-[28px] bg-white/[0.04] ring-1 ring-white/10" />
-        <div className="rounded-[28px] bg-white/[0.04] ring-1 ring-white/10" style={{ height: 420 }} />
+        <div className="rounded-[28px] bg-white/[0.04] ring-1 ring-white/10" style={{ height: 380 }} />
       </div>
     </main>
   );
@@ -388,4 +365,3 @@ export default function HomePage() {
     </Suspense>
   );
 }
-
