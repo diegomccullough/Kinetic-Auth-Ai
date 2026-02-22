@@ -441,20 +441,14 @@ export type VerificationWizardProps = {
   onVerified?: (score: ScoreBreakdown) => void;
   onCancel?: () => void;
   returnTo?: string;
-  /** Songs for the beat challenge (music events only) */
+  /** Songs for the beat challenge — only used if gyro test fails (music events only) */
   songs?: EventSong[];
-  /** Whether the site is under high traffic */
-  highTraffic?: boolean;
-  /** Number of tickets being purchased */
-  ticketQty?: number;
 };
 
 export default function VerificationWizard({
   onVerified,
   onCancel: _onCancel,
   songs,
-  highTraffic = false,
-  ticketQty = 1,
 }: VerificationWizardProps) {
   const reduceMotion = useReducedMotion();
   const { smoothedBeta, smoothedGamma, smoothedRef, available, permissionState, requestPermission } =
@@ -471,9 +465,9 @@ export default function VerificationWizard({
   const [holdPct, setHoldPct] = useState(0);
   const [pulseKey, setPulseKey] = useState(0);
 
-  // Beat challenge state
+  // Beat challenge state — only triggered by gyro fail
   const [beatSong, setBeatSong] = useState<EventSong | null>(null);
-  const beatReasonRef = useRef<"gyro_fail" | "high_traffic" | "high_qty" | null>(null);
+  const beatTriggeredRef = useRef(false);
 
   const timingsRef = useRef<{ timeToLeft?: number; timeToRight?: number }>({});
   const taskStartAtRef = useRef<number | null>(null);
@@ -511,28 +505,16 @@ export default function VerificationWizard({
     return songs[Math.floor(Math.random() * songs.length)];
   }, [songs]);
 
-  const triggerBeatChallenge = useCallback((reason: "gyro_fail" | "high_traffic" | "high_qty") => {
+  const triggerBeatChallenge = useCallback(() => {
     const song = pickSong();
     if (!song) return false;
-    beatReasonRef.current = reason;
+    beatTriggeredRef.current = true;
     setBeatSong(song);
     setScreen("beat");
     return true;
   }, [pickSong]);
 
   const advanceToTasks = useCallback(() => {
-    // Check pre-task triggers (high traffic or high qty)
-    if (songs && songs.length > 0) {
-      if (highTraffic) {
-        triggerBeatChallenge("high_traffic");
-        return;
-      }
-      if (ticketQty >= 4) {
-        triggerBeatChallenge("high_qty");
-        return;
-      }
-    }
-
     setScreen("tasks");
     setTaskId("left");
     timingsRef.current = {};
@@ -547,7 +529,7 @@ export default function VerificationWizard({
     setInside(false);
     setHoldPct(0);
     setPulseKey((k) => k + 1);
-  }, [smoothedRef, songs, highTraffic, ticketQty, triggerBeatChallenge]);
+  }, [smoothedRef]);
 
   const finish = useCallback((score: ScoreBreakdown) => {
     setFinalScore(score);
@@ -666,8 +648,8 @@ export default function VerificationWizard({
         if (outsideMsRef.current >= GYRO_FAIL_SECONDS * 1000) {
           gyroFailTriggeredRef.current = true;
           window.cancelAnimationFrame(raf);
-          // Trigger beat challenge if songs available, otherwise just continue
-          const triggered = triggerBeatChallenge("gyro_fail");
+          // Trigger beat challenge if songs available, otherwise just reset timer
+          const triggered = triggerBeatChallenge();
           if (!triggered) {
             // No songs: just reset the outside timer and let them keep trying
             outsideMsRef.current = 0;
@@ -731,55 +713,29 @@ export default function VerificationWizard({
 
   const granted = permissionState === "granted" || motionUnlocked;
 
-  // After beat challenge passes, continue to tasks (unless gyro fail — go straight to result)
+  // Beat challenge always follows gyro fail — passing it gives a passing score
   const handleBeatPass = useCallback(() => {
-    if (beatReasonRef.current === "gyro_fail") {
-      // They failed gyro but passed beat — still give them a passing score
-      const score = scoreHumanConfidence({
-        motionSamples: motionSamplesRef.current,
-        directedTimings: timingsRef.current,
-        stabilityPct: 50,
-        stabilityHoldPct: 50,
-      });
-      finish(score);
-    } else {
-      // Pre-task beat challenge passed — now do the gyro tasks
-      setScreen("tasks");
-      setTaskId("left");
-      timingsRef.current = {};
-      motionSamplesRef.current = [];
-      stableMsRef.current = 0;
-      tiltHoldMsRef.current = 0;
-      outsideMsRef.current = 0;
-      gyroFailTriggeredRef.current = false;
-      taskStartAtRef.current = performance.now();
-      baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
-      setDot({ x: 0, y: 0 });
-      setInside(false);
-      setHoldPct(0);
-      setPulseKey((k) => k + 1);
-    }
     setBeatSong(null);
-  }, [finish, smoothedRef]);
+    const score = scoreHumanConfidence({
+      motionSamples: motionSamplesRef.current,
+      directedTimings: timingsRef.current,
+      stabilityPct: 50,
+      stabilityHoldPct: 50,
+    });
+    finish(score);
+  }, [finish]);
 
   const handleBeatSkip = useCallback(() => {
-    // Skip beat challenge — go straight to tasks regardless of reason
+    // Skipping the beat challenge (which only appears after gyro fail) goes to result
     setBeatSong(null);
-    setScreen("tasks");
-    setTaskId("left");
-    timingsRef.current = {};
-    motionSamplesRef.current = [];
-    stableMsRef.current = 0;
-    tiltHoldMsRef.current = 0;
-    outsideMsRef.current = 0;
-    gyroFailTriggeredRef.current = false;
-    taskStartAtRef.current = performance.now();
-    baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
-    setDot({ x: 0, y: 0 });
-    setInside(false);
-    setHoldPct(0);
-    setPulseKey((k) => k + 1);
-  }, [smoothedRef]);
+    const score = scoreHumanConfidence({
+      motionSamples: motionSamplesRef.current,
+      directedTimings: timingsRef.current,
+      stabilityPct: 20,
+      stabilityHoldPct: 20,
+    });
+    finish(score);
+  }, [finish]);
 
   // Outside timer display for steady task
   const outsideSecsRemaining = useMemo(() => {
@@ -1175,7 +1131,7 @@ export default function VerificationWizard({
                   <div>
                     <p className="text-[15px] font-semibold text-white">Identity confirmed</p>
                     <p className="text-xs text-slate-400">
-                      {beatReasonRef.current
+                      {beatTriggeredRef.current
                         ? "Beat challenge + motion verification complete"
                         : "Motion verification complete"}
                     </p>
@@ -1196,7 +1152,7 @@ export default function VerificationWizard({
                       { label: "Motion signature", value: "Valid" },
                       { label: "Behavioral timing", value: "Natural" },
                       { label: "Device integrity", value: "Verified" },
-                      ...(beatReasonRef.current ? [{ label: "Beat challenge", value: "Passed" }] : []),
+                      ...(beatTriggeredRef.current ? [{ label: "Beat challenge", value: "Passed" }] : []),
                     ].map((row, i) => (
                       <motion.div
                         key={row.label}
