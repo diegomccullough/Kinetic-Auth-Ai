@@ -1,5 +1,5 @@
 export async function generateInstruction(step: string, risk_level: string) {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  const apiKey = process.env.AIzaSyAaPe9xQMPmktaa8Y_wkiRKbGYYEbpgSNw;
 
   const prompt = `
 Generate a short spoken instruction under 20 words.
@@ -9,7 +9,7 @@ Clear and calm tone.
 `;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${AIzaSyAaPe9xQMPmktaa8Y_wkiRKbGYYEbpgSNw}`,
+    `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: {
