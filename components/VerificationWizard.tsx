@@ -15,16 +15,14 @@ type Baseline = { beta: number; gamma: number; alpha: number };
 const MAX_FPS = 60;
 const CLAMP_TILT_DEG = 35;
 
-const DIRECTED_HOLD_MS = 200;
-const DIRECTED_THRESHOLD_DEG = 15;
+const DIRECTED_HOLD_MS = 250;
+const DIRECTED_THRESHOLD_DEG = 18;
 
 const MAX_OFFSET_PX = 92;
 
-const STABILITY_WINDOW_SAMPLES = 60; // frames
-const STABILITY_AVG_DEVIATION_DEG = 3;
 const STABILITY_HOLD_MS = 1500;
-const STABILITY_VISUAL_MAX_DEG = 10;
 const DOT_FACTOR_PX_PER_DEG = MAX_OFFSET_PX / CLAMP_TILT_DEG;
+const STABILITY_INNER_RADIUS_PX = 39;
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -99,8 +97,9 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
   const directedSequence = useMemo(
     () =>
       [
-        { id: "left", title: "Tilt LEFT", axis: "gamma" as const, dir: -1 },
-        { id: "right", title: "Tilt RIGHT", axis: "gamma" as const, dir: 1 }
+        { id: "left", title: "TILT LEFT", axis: "gamma" as const, dir: -1 },
+        { id: "right", title: "TILT RIGHT", axis: "gamma" as const, dir: 1 },
+        { id: "forward", title: "TILT FORWARD", axis: "beta" as const, dir: 1 }
       ] as const,
     []
   );
@@ -110,19 +109,18 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
   const directedPromptStartRef = useRef<number | null>(null);
   const directedAdvanceTimerRef = useRef<number | null>(null);
   const [directedCheckKey, setDirectedCheckKey] = useState(0);
-  const [lastPassed, setLastPassed] = useState<null | "left" | "right">(null);
+  const [lastPassed, setLastPassed] = useState<null | "left" | "right" | "forward">(null);
   const [timings, setTimings] = useState<{
     timeToLeft?: number;
     timeToRight?: number;
+    timeToForward?: number;
   }>({});
 
   const stableMsRef = useRef(0);
   const [stablePct, setStablePct] = useState(0);
   const [stabilityPct, setStabilityPct] = useState(0);
-  const [avgDeviationDeg, setAvgDeviationDeg] = useState(0);
   const [dot, setDot] = useState({ x: 0, y: 0 });
   const [inside, setInside] = useState(false);
-  const devBufRef = useRef<number[]>([]);
   const stabilizeDoneRef = useRef(false);
   const [stabilizeSuccess, setStabilizeSuccess] = useState(false);
   const [confettiKey, setConfettiKey] = useState(0);
@@ -140,8 +138,6 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
     });
   }, [confettiKey]);
 
-  const [previewBaseline, setPreviewBaseline] = useState<{ beta: number; gamma: number } | null>(null);
-
   const startVerification = useCallback(async () => {
     const res = await requestPermission();
     if (res === "granted") {
@@ -158,13 +154,11 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
   useEffect(() => {
     if (step !== "stabilize") return;
     baselineRef.current = { ...smoothedRef.current };
-    devBufRef.current = [];
     stableMsRef.current = 0;
     stabilizeDoneRef.current = false;
     setStabilizeSuccess(false);
     setStabilityPct(0);
     setStablePct(0);
-    setAvgDeviationDeg(0);
     setDot({ x: 0, y: 0 });
     setInside(false);
   }, [step, smoothedRef]);
@@ -179,7 +173,6 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
     setLastPassed(null);
     setTimings({});
     directedBaselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
-    setPreviewBaseline({ beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma });
     if (directedAdvanceTimerRef.current) window.clearTimeout(directedAdvanceTimerRef.current);
     directedAdvanceTimerRef.current = null;
   }, [step, smoothedRef]);
@@ -188,16 +181,10 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
   useEffect(() => {
     if (step !== "directed") return;
     directedBaselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
-    setPreviewBaseline({ beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma });
     directedHoldRef.current = 0;
     setDirectedHoldPct(0);
     directedPromptStartRef.current = performance.now();
   }, [directedIdx, step, smoothedRef]);
-
-  useEffect(() => {
-    if (step !== "freeTilt") return;
-    setPreviewBaseline({ beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma });
-  }, [step, smoothedRef]);
 
   useEffect(() => {
     // Reset motion window when entering motion-heavy steps.
@@ -244,7 +231,9 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
         const ok =
           current.id === "left"
             ? dGamma < -DIRECTED_THRESHOLD_DEG
-            : dGamma > DIRECTED_THRESHOLD_DEG;
+            : current.id === "right"
+              ? dGamma > DIRECTED_THRESHOLD_DEG
+              : dBeta > DIRECTED_THRESHOLD_DEG;
 
         directedHoldRef.current = ok ? directedHoldRef.current + dtMs : 0;
         directedHoldRef.current = clamp(directedHoldRef.current, 0, DIRECTED_HOLD_MS);
@@ -262,6 +251,7 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
           setTimings((prev) => {
             if (id === "left" && prev.timeToLeft === undefined) return { ...prev, timeToLeft: Math.round(elapsed) };
             if (id === "right" && prev.timeToRight === undefined) return { ...prev, timeToRight: Math.round(elapsed) };
+            if (id === "forward" && prev.timeToForward === undefined) return { ...prev, timeToForward: Math.round(elapsed) };
             return prev;
           });
 
@@ -290,30 +280,28 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
         const dBeta = s.beta - base.beta;
         const dGamma = s.gamma - base.gamma;
 
-        const buf = devBufRef.current;
-        const deviation = Math.sqrt(dBeta * dBeta + dGamma * dGamma);
-        buf.push(deviation);
-        if (buf.length > STABILITY_WINDOW_SAMPLES) buf.shift();
+        const x = clamp(dGamma * DOT_FACTOR_PX_PER_DEG, -MAX_OFFSET_PX, MAX_OFFSET_PX);
+        const y = clamp(dBeta * DOT_FACTOR_PX_PER_DEG, -MAX_OFFSET_PX, MAX_OFFSET_PX);
 
-        let sum = 0;
-        for (const v of buf) sum += v;
-        const avg = buf.length ? sum / buf.length : 0;
-        setAvgDeviationDeg((prev) => (Math.abs(prev - avg) > 0.05 ? avg : prev));
+        const dist = Math.sqrt(x * x + y * y);
+        const insideTarget = dist <= STABILITY_INNER_RADIUS_PX;
 
-        const stability = clamp(100 * (1 - avg / STABILITY_VISUAL_MAX_DEG), 0, 100);
+        // Stability percent is distance-based (for UI + scoring).
+        const stability = clamp(100 * (1 - dist / STABILITY_INNER_RADIUS_PX), 0, 100);
         frameStabilityPct = stability;
-        setStabilityPct((prev) => (Math.abs(prev - stability) > 0.5 ? stability : prev));
+        setStabilityPct((prev) => (Math.abs(prev - stability) > 0.8 ? stability : prev));
 
-        const stableEnough = avg < STABILITY_AVG_DEVIATION_DEG;
-        stableMsRef.current = stableEnough ? clamp(stableMsRef.current + dtMs, 0, STABILITY_HOLD_MS) : stableMsRef.current;
+        // Accumulate only while inside. Outside pauses + slight decay.
+        stableMsRef.current = insideTarget
+          ? clamp(stableMsRef.current + dtMs, 0, STABILITY_HOLD_MS)
+          : clamp(stableMsRef.current - dtMs * 0.55, 0, STABILITY_HOLD_MS);
+
         const pct = (stableMsRef.current / STABILITY_HOLD_MS) * 100;
         frameHoldPct = pct;
 
-        setInside(stableEnough);
+        setInside(insideTarget);
         setStablePct((prev) => (Math.abs(prev - pct) > 0.25 ? pct : prev));
 
-        const x = clamp(dGamma * DOT_FACTOR_PX_PER_DEG, -MAX_OFFSET_PX, MAX_OFFSET_PX);
-        const y = clamp(dBeta * DOT_FACTOR_PX_PER_DEG, -MAX_OFFSET_PX, MAX_OFFSET_PX);
         setDot((prev) => {
           const dx = Math.abs(prev.x - x);
           const dy = Math.abs(prev.y - y);
@@ -369,7 +357,7 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
   }, [smoothedBeta, smoothedGamma]);
 
   const directed = directedSequence[directedIdx] ?? directedSequence[0];
-  const directedArrow = directed?.id === "left" ? "←" : "→";
+  const directedArrow = directed?.id === "left" ? "←" : directed?.id === "right" ? "→" : "↓";
 
   return (
     <div className="relative">
@@ -478,22 +466,16 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
               transition={{ duration: 0.28, ease: "easeOut" }}
-              className="flex h-[68dvh] flex-col overflow-hidden"
+              className="flex h-[72dvh] flex-col overflow-hidden"
             >
               <div className="text-center">
                 <p className="text-xs font-semibold tracking-[0.22em] text-white/60">STEP 1</p>
                 <p className="mt-2 text-4xl font-semibold tracking-tight text-white">Tilt your phone</p>
-                <p className="mt-2 text-sm text-white/65">Movement should feel instant and sharp.</p>
+                <p className="mt-2 text-sm text-white/65">Cinematic mode — smooth, premium motion.</p>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <PhoneTiltPreview
-                  beta={beta}
-                  gamma={gamma}
-                  baselineBeta={previewBaseline?.beta}
-                  baselineGamma={previewBaseline?.gamma}
-                  reduceMotion={!!reduceMotion}
-                />
+              <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[28px] bg-black/25 ring-1 ring-white/10">
+                <PhoneTiltPreview beta={beta} gamma={gamma} reduceMotion={!!reduceMotion} />
               </div>
 
               <div className="space-y-3">
@@ -533,12 +515,33 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
               <div className="text-center">
                 <p className="text-xs font-semibold tracking-[0.22em] text-white/60">STEP 2</p>
                 <p className="mt-2 text-7xl font-semibold leading-none tracking-tight text-white">{directedArrow}</p>
-                <p className="mt-2 text-4xl font-semibold tracking-tight text-white">{directed.title}</p>
-                <p className="mt-2 text-sm text-white/65">Hold for {DIRECTED_HOLD_MS}ms to confirm.</p>
+                <p className="mt-3 text-5xl font-semibold tracking-tight text-white">{directed.title}</p>
+                <p className="mt-3 text-sm text-white/65">Hold for {DIRECTED_HOLD_MS}ms to confirm.</p>
               </div>
 
-              <div className="relative min-h-0 flex-1 overflow-hidden">
-                <PhoneTiltPreview beta={beta} gamma={gamma} baselineBeta={previewBaseline?.beta} baselineGamma={previewBaseline?.gamma} />
+              <div className="relative mt-4 min-h-0 flex-1 overflow-hidden rounded-[28px] bg-black/25 ring-1 ring-white/10">
+                <div className="absolute inset-0 grid place-items-center">
+                  <motion.div
+                    className="grid h-[220px] w-[220px] place-items-center rounded-full bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.16)_0%,rgba(99,102,241,0.10)_35%,rgba(0,0,0,0)_70%)] ring-1 ring-white/10"
+                    animate={
+                      reduceMotion
+                        ? undefined
+                        : { boxShadow: ["0 0 0 rgba(0,0,0,0)", "0 0 110px rgba(56,189,248,0.16)", "0 0 0 rgba(0,0,0,0)"] }
+                    }
+                    transition={reduceMotion ? undefined : { duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                  >
+                    <motion.div
+                      className="text-[110px] font-semibold leading-none text-white"
+                      initial={false}
+                      animate={reduceMotion ? undefined : { scale: [1, 1.04, 1] }}
+                      transition={reduceMotion ? undefined : { duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+                      aria-hidden="true"
+                    >
+                      {directedArrow}
+                    </motion.div>
+                  </motion.div>
+                </div>
+
                 <AnimatePresence>
                   {lastPassed ? (
                     <motion.div
@@ -549,6 +552,12 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                       exit={{ opacity: 0, scale: 1.05 }}
                       transition={{ duration: 0.22, ease: "easeOut" }}
                     >
+                      <motion.div
+                        className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(16,185,129,0.20)_0%,rgba(56,189,248,0.10)_38%,rgba(0,0,0,0)_72%)]"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: [0, 1, 0] }}
+                        transition={{ duration: 0.55, ease: "easeOut" }}
+                      />
                       <motion.div
                         className="grid h-24 w-24 place-items-center rounded-[26px] bg-emerald-400/10 ring-1 ring-emerald-300/25"
                         animate={{ boxShadow: ["0 0 0 rgba(0,0,0,0)", "0 0 90px rgba(16,185,129,0.18)", "0 0 0 rgba(0,0,0,0)"] }}
@@ -572,20 +581,28 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                 </AnimatePresence>
               </div>
 
-              <div className="rounded-2xl bg-black/25 p-3 ring-1 ring-white/10">
+              <div className="mt-4 rounded-2xl bg-black/25 p-3 ring-1 ring-white/10">
                 <div className="flex items-center justify-between text-xs text-white/55">
                   <span>
-                    Progress <span className="font-semibold text-white/80">{directedIdx + 1}/2</span>
+                    Progress <span className="font-semibold text-white/80">{directedIdx + 1}/3</span>
                   </span>
                   <span className="tabular-nums">{Math.round(directedHoldPct * 100)}%</span>
                 </div>
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-                  <motion.div
-                    className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400"
-                    initial={false}
-                    animate={{ width: `${Math.round(directedHoldPct * 100)}%` }}
-                    transition={{ type: "tween", duration: 0.12, ease: "linear" }}
-                  />
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {[0, 1, 2].map((i) => {
+                    const done = i < directedIdx;
+                    const active = i === directedIdx;
+                    return (
+                      <div key={i} className="h-2 overflow-hidden rounded-full bg-white/10">
+                        <motion.div
+                          className={done ? "h-full bg-emerald-300/90" : "h-full bg-gradient-to-r from-sky-400 to-indigo-400"}
+                          initial={false}
+                          animate={{ width: done ? "100%" : active ? `${Math.round(directedHoldPct * 100)}%` : "0%" }}
+                          transition={{ type: "tween", duration: 0.12, ease: "linear" }}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -662,7 +679,12 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                       <div className="absolute left-1/2 top-1/2 h-[78px] w-[78px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/10" />
                       <motion.div
                         className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-200 shadow-[0_0_22px_rgba(56,189,248,0.65)]"
-                        animate={{ x: dot.x, y: dot.y, scale: stablePct >= 100 ? 1.25 : 1 }}
+                        animate={{
+                          x: dot.x,
+                          y: dot.y,
+                          scale: stablePct >= 100 ? 1.25 : inside ? 1.1 : 1,
+                          boxShadow: inside ? "0 0 30px rgba(56,189,248,0.95)" : "0 0 18px rgba(56,189,248,0.45)"
+                        }}
                         transition={{ type: "spring", stiffness: 260, damping: 22, mass: 0.28 }}
                       />
                     </div>
@@ -676,6 +698,19 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                         animate={{ opacity: [0.28, 0.65, 0.28], scale: [1, 1.02, 1] }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 1.15, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                    ) : null}
+                  </AnimatePresence>
+
+                  <AnimatePresence>
+                    {stablePct > 85 && stablePct < 100 ? (
+                      <motion.div
+                        className="absolute inset-[2px] rounded-full ring-1 ring-emerald-300/18"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: [0.12, 0.32, 0.12], scale: [1, 1.015, 1] }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.95, repeat: Infinity, ease: "easeInOut" }}
+                        aria-hidden="true"
                       />
                     ) : null}
                   </AnimatePresence>
@@ -714,7 +749,10 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
                   <motion.div
-                    className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400"
+                    className={[
+                      "h-full rounded-full",
+                      inside ? "bg-gradient-to-r from-emerald-300/90 to-sky-300/90" : "bg-gradient-to-r from-sky-400 to-indigo-400"
+                    ].join(" ")}
                     initial={false}
                     animate={{ width: `${Math.round(stablePct)}%` }}
                     transition={{ type: "tween", duration: 0.12, ease: "linear" }}
@@ -835,8 +873,47 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
 
       <div className="pointer-events-none fixed bottom-5 right-5 z-50">
         <div className="pointer-events-auto rounded-2xl bg-black/60 px-3 py-2 ring-1 ring-white/10 backdrop-blur">
-          <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">HUMAN CONFIDENCE</p>
-          <p className="mt-0.5 text-sm font-semibold tabular-nums text-white">{clamp(score.humanConfidence, 0, 100)}%</p>
+          <div className="flex items-center gap-3">
+            <div className="relative h-11 w-11">
+              <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90">
+                <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.12)" strokeWidth="4" fill="none" />
+                <motion.circle
+                  cx="22"
+                  cy="22"
+                  r="18"
+                  stroke={
+                    score.humanConfidence < 50
+                      ? "rgba(244,63,94,0.95)"
+                      : score.humanConfidence < 75
+                        ? "rgba(250,204,21,0.95)"
+                        : "rgba(52,211,153,0.95)"
+                  }
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  fill="none"
+                  strokeDasharray={2 * Math.PI * 18}
+                  animate={{ strokeDashoffset: (2 * Math.PI * 18) * (1 - clamp(score.humanConfidence, 0, 100) / 100) }}
+                  transition={{ type: "spring", stiffness: 140, damping: 20 }}
+                />
+              </svg>
+              <div className="absolute inset-0 grid place-items-center">
+                <motion.span
+                  className="text-[11px] font-semibold tabular-nums text-white"
+                  key={Math.round(score.humanConfidence)}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                >
+                  {clamp(score.humanConfidence, 0, 100)}%
+                </motion.span>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">HUMAN CONFIDENCE</p>
+              <p className="mt-0.5 text-[11px] text-white/55">Behavioral entropy analysis</p>
+            </div>
+          </div>
         </div>
       </div>
 
