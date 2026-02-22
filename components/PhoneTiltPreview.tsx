@@ -8,9 +8,17 @@ function clamp(n: number, min: number, max: number) {
 
 type PhoneTiltVariant = "default" | "cinematic";
 
-const VARIANT_TUNING: Record<PhoneTiltVariant, { maxDeg: number; deadzoneDeg: number; smoothing: number; parallax: number }> = {
-  default: { maxDeg: 20, deadzoneDeg: 1.5, smoothing: 0.04, parallax: 1.0 },
-  cinematic: { maxDeg: 18, deadzoneDeg: 0.35, smoothing: 0.22, parallax: 1.35 }
+const VARIANT_TUNING: Record<
+  PhoneTiltVariant,
+  {
+    maxDeg: number;
+    deadzoneDeg: number;
+    parallax: number;
+    spring: { stiffness: number; damping: number };
+  }
+> = {
+  default: { maxDeg: 20, deadzoneDeg: 1.25, parallax: 1.0, spring: { stiffness: 150, damping: 18 } },
+  cinematic: { maxDeg: 18, deadzoneDeg: 0.35, parallax: 1.35, spring: { stiffness: 230, damping: 14 } }
 };
 
 type PhoneTiltPreviewProps = {
@@ -31,12 +39,12 @@ export default function PhoneTiltPreview({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const phoneRef = useRef<HTMLDivElement | null>(null);
   const bgRef = useRef<HTMLDivElement | null>(null);
+  const rimRef = useRef<HTMLDivElement | null>(null);
 
   // Capture baseline on entry (Step 1 mount) so tilt is relative even if phone isn't flat.
   const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
 
   const latest = useRef({ beta: 0, gamma: 0 });
-  const smoothed = useRef({ beta: 0, gamma: 0 });
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -46,14 +54,14 @@ export default function PhoneTiltPreview({
   useEffect(() => {
     if (baselineRef.current) return;
     baselineRef.current = { beta, gamma };
-    smoothed.current = { beta: 0, gamma: 0 };
   }, [beta, gamma]);
 
   useEffect(() => {
     const root = rootRef.current;
     const phone = phoneRef.current;
     const bg = bgRef.current;
-    if (!root || !phone || !bg) return;
+    const rim = rimRef.current;
+    if (!root || !phone || !bg || !rim) return;
 
     const tune = VARIANT_TUNING[variant];
 
@@ -65,9 +73,14 @@ export default function PhoneTiltPreview({
     }
 
     let last = 0;
+    const pos = { beta: 0, gamma: 0 };
+    const vel = { beta: 0, gamma: 0 };
+    const velSmoothed = { beta: 0, gamma: 0 };
+
     const tick = (t: number) => {
       rafRef.current = window.requestAnimationFrame(tick);
       if (t - last < 1000 / 60) return;
+      const dt = clamp((last ? t - last : 16) / 1000, 0.008, 0.05);
       last = t;
 
       const base = baselineRef.current ?? { beta: 0, gamma: 0 };
@@ -77,18 +90,25 @@ export default function PhoneTiltPreview({
       const targetBeta = clamp(relBeta, -tune.maxDeg, tune.maxDeg);
       const targetGamma = clamp(relGamma, -tune.maxDeg, tune.maxDeg);
 
-      const db = targetBeta - smoothed.current.beta;
-      const dg = targetGamma - smoothed.current.gamma;
-
       // Deadzone: ignore micro changes to reduce jitter.
-      const nextBeta = Math.abs(db) < tune.deadzoneDeg ? smoothed.current.beta : smoothed.current.beta + db * tune.smoothing;
-      const nextGamma = Math.abs(dg) < tune.deadzoneDeg ? smoothed.current.gamma : smoothed.current.gamma + dg * tune.smoothing;
+      const nextTargetBeta = Math.abs(targetBeta - pos.beta) < tune.deadzoneDeg ? pos.beta : targetBeta;
+      const nextTargetGamma = Math.abs(targetGamma - pos.gamma) < tune.deadzoneDeg ? pos.gamma : targetGamma;
 
-      smoothed.current.beta = nextBeta;
-      smoothed.current.gamma = nextGamma;
+      // Underdamped spring for keynote-style snappy overshoot.
+      vel.beta += (nextTargetBeta - pos.beta) * tune.spring.stiffness * dt;
+      vel.gamma += (nextTargetGamma - pos.gamma) * tune.spring.stiffness * dt;
+      const damp = Math.exp(-tune.spring.damping * dt);
+      vel.beta *= damp;
+      vel.gamma *= damp;
+      pos.beta += vel.beta * dt;
+      pos.gamma += vel.gamma * dt;
 
-      const rx = -nextBeta;
-      const ry = nextGamma;
+      // Smooth velocity just for glow (avoid flicker).
+      velSmoothed.beta = velSmoothed.beta + (vel.beta - velSmoothed.beta) * 0.18;
+      velSmoothed.gamma = velSmoothed.gamma + (vel.gamma - velSmoothed.gamma) * 0.18;
+
+      const rx = -pos.beta;
+      const ry = pos.gamma;
 
       phone.style.transformOrigin = "center center";
       phone.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg)`;
@@ -96,12 +116,18 @@ export default function PhoneTiltPreview({
       const mag = Math.sqrt(rx * rx + ry * ry);
       const mag01 = clamp(mag / 28, 0, 1);
 
-      const glow = variant === "cinematic" ? 0.20 + mag01 * 0.34 : 0.10 + mag01 * 0.22;
+      const speed = Math.hypot(velSmoothed.beta, velSmoothed.gamma);
+      const speed01 = clamp(speed / 140, 0, 1);
+
+      const glow = variant === "cinematic" ? 0.18 + mag01 * 0.32 + speed01 * 0.22 : 0.10 + mag01 * 0.22 + speed01 * 0.12;
       const shadowX = clamp(ry * 0.55, -14, 14);
       const shadowY = 18 + clamp(rx * 0.35, -10, 10);
       const blur = 62 + mag01 * 54;
 
       root.style.boxShadow = `${shadowX}px ${shadowY}px ${blur}px rgba(0,0,0,0.62), 0 0 110px rgba(34,211,238,${glow}), 0 0 0 1px rgba(255,255,255,0.10) inset`;
+
+      const rimA = variant === "cinematic" ? 0.24 + mag01 * 0.22 + speed01 * 0.26 : 0.18 + mag01 * 0.16 + speed01 * 0.18;
+      rim.style.boxShadow = `0 0 0 1px rgba(34,211,238,${rimA}) inset, 0 0 52px rgba(34,211,238,${0.08 + mag01 * 0.12 + speed01 * 0.14})`;
 
       const px = clamp(-ry * 0.6 * tune.parallax, -18, 18);
       const py = clamp(-rx * 0.5 * tune.parallax, -16, 16);
@@ -153,6 +179,7 @@ export default function PhoneTiltPreview({
         >
           <div className="absolute inset-0 rounded-[34px] bg-gradient-to-b from-white/14 to-white/[0.03] ring-1 ring-white/20" />
           <div
+            ref={rimRef}
             className="pointer-events-none absolute inset-0 rounded-[34px]"
             style={{
               boxShadow: "0 0 0 1px rgba(34,211,238,0.28) inset, 0 0 48px rgba(34,211,238,0.14)"

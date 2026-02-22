@@ -240,20 +240,6 @@ function HomePageClient() {
               </div>
             </div>
 
-            <AnimatePresence initial={false}>
-              {verified ? (
-                <motion.div
-                  key="verified-banner"
-                  initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                  animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                  exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-                  transition={{ duration: 0.22, ease: "easeOut" }}
-                  className="mt-3 rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200 ring-1 ring-emerald-300/20"
-                >
-                  <span className="font-semibold">Verification complete</span> — checkout unlocked.
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
           </div>
         </motion.header>
 
@@ -281,7 +267,6 @@ function HomePageClient() {
                 <p className="mt-2 text-xl font-semibold tracking-tight">Section B • Row 3</p>
                 <p className="mt-1 text-sm text-white/65">
                   1 ticket per customer • limited release
-                  {verified ? <span className="ml-2 text-emerald-200/90">• Checkout unlocked</span> : null}
                 </p>
               </div>
               <div className="price-block">
@@ -290,17 +275,24 @@ function HomePageClient() {
                   <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">$299</p>
                   <p className="mt-1 text-xs text-white/55">incl. fees</p>
                 </div>
-                {verified ? (
-                  <motion.div
-                    initial={reduceMotion ? false : { opacity: 0, y: 6 }}
-                    animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="rounded-2xl bg-emerald-400/10 px-3 py-2 text-right ring-1 ring-emerald-300/25"
-                  >
-                    <p className="text-[10px] font-semibold tracking-[0.26em] text-emerald-200/90">VERIFIED HUMAN</p>
-                    <p className="mt-0.5 text-[11px] font-medium text-emerald-100/90">Checkout unlocked</p>
-                  </motion.div>
-                ) : null}
+                <AnimatePresence initial={false}>
+                  {verified ? (
+                    <motion.div
+                      key="verified-badge"
+                      initial={reduceMotion ? false : { opacity: 0, y: 10, scale: 0.98 }}
+                      animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+                      exit={reduceMotion ? undefined : { opacity: 0, y: -10, scale: 0.98 }}
+                      transition={reduceMotion ? undefined : { type: "spring", stiffness: 220, damping: 20, mass: 0.6 }}
+                      className="inline-flex items-center justify-end gap-2 rounded-full bg-emerald-300/15 px-3 py-2 text-right ring-1 ring-emerald-200/25"
+                      style={{ boxShadow: "0 0 40px rgba(52,211,153,0.14)" }}
+                    >
+                      <span className="text-sm text-emerald-100">✔</span>
+                      <span className="text-[11px] font-semibold tracking-[0.18em] text-emerald-100/90">
+                        HUMAN VERIFIED
+                      </span>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
               </div>
             </div>
 
@@ -338,14 +330,18 @@ function HomePageClient() {
                 }}
                 className={[
                   "relative inline-flex h-14 w-full items-center justify-center overflow-hidden rounded-2xl px-4 text-sm font-semibold ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black",
-                  verified ? "bg-white text-black ring-white/10" : "bg-white/10 text-white ring-white/15 hover:bg-white/15"
+                  verified ? "bg-emerald-300 text-black ring-emerald-200/20" : "bg-white/10 text-white ring-white/15 hover:bg-white/15"
                 ].join(" ")}
                 animate={
                   reduceMotion
                     ? undefined
-                    : { boxShadow: ["0 0 0 rgba(0,0,0,0)", "0 0 90px rgba(56,189,248,0.18)", "0 0 0 rgba(0,0,0,0)"] }
+                    : {
+                        boxShadow: verified
+                          ? "0 0 90px rgba(52,211,153,0.22)"
+                          : "0 0 0 rgba(0,0,0,0)"
+                      }
                 }
-                transition={reduceMotion ? undefined : { duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                transition={reduceMotion ? undefined : { type: "spring", stiffness: 220, damping: 22, mass: 0.65 }}
               >
                 <AnimatePresence>
                   {verified && unlockFx && !reduceMotion ? (
@@ -364,37 +360,8 @@ function HomePageClient() {
                     />
                   ) : null}
                 </AnimatePresence>
-                {verified ? "BUY TICKET" : "BUY TICKET (VERIFY FIRST)"}
+                {placed && verified ? "Order placed" : "Place Order"}
               </motion.button>
-
-              <button
-                type="button"
-                disabled={!verified}
-                onClick={() => setPlaced(true)}
-                className={[
-                  "inline-flex h-12 w-full items-center justify-center rounded-2xl px-4 text-sm font-semibold ring-1 transition",
-                  verified
-                    ? "bg-emerald-400/90 text-black ring-emerald-300/20 hover:bg-emerald-300 active:scale-[0.99]"
-                    : "bg-white/5 text-white/40 ring-white/10"
-                ].join(" ")}
-              >
-                Place Order
-              </button>
-
-              <AnimatePresence initial={false}>
-                {placed && verified ? (
-                  <motion.div
-                    key="placed"
-                    initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                    animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                    exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-                    transition={{ duration: 0.22, ease: "easeOut" }}
-                    className="rounded-2xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200 ring-1 ring-emerald-300/20"
-                  >
-                    Ticket secured (simulated). Enjoy the show.
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
             </div>
           </div>
         </motion.section>

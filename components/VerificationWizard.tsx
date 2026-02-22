@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, animate, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PhoneTiltPreview from "@/components/PhoneTiltPreview";
 import { Button } from "@/components/ui/Button";
@@ -21,13 +21,11 @@ function vibrate(pattern: number | number[]) {
   }
 }
 
-const INTRO_AUTO_ADVANCE_AFTER_INTERACTION_MS = 1500;
-
 const TASKS_TOTAL = 3;
 const TILT_TASK_THRESHOLD_DEG = 16;
-const TILT_TASK_HOLD_MS = 240;
+const TILT_TASK_HOLD_MS = 900;
 
-const HOLD_STEADY_TARGET_MS = 1200;
+const HOLD_STEADY_TARGET_MS = 1800;
 const HOLD_STEADY_RADIUS_PX = 34;
 const DOT_CLAMP_DEG = 28;
 const DOT_MAX_OFFSET_PX = 98;
@@ -36,16 +34,118 @@ const DOT_PX_PER_DEG = DOT_MAX_OFFSET_PX / DOT_CLAMP_DEG;
 type Screen = "intro" | "tasks" | "result";
 type TaskId = "left" | "right" | "steady";
 
-function prettyStat(label: "Entropy" | "Smoothness" | "Reaction" | "Stability", score: number) {
-  if (label === "Entropy") return score >= 72 ? "High" : score >= 50 ? "Good" : "Low";
-  if (label === "Smoothness") return score >= 68 ? "Natural" : score >= 50 ? "Stable" : "Rigid";
-  if (label === "Reaction") return score >= 68 ? "Responsive" : score >= 50 ? "Normal" : "Slow";
-  return score >= 70 ? "Confirmed" : score >= 50 ? "Mostly stable" : "Unstable";
-}
-
 function ringDashOffset(radius: number, pct: number) {
   const c = 2 * Math.PI * radius;
   return c * (1 - clamp(pct, 0, 100) / 100);
+}
+
+function Stepper({ completed }: { completed: number }) {
+  const clampedCompleted = clamp(completed, 0, 3);
+  const linePct = clampedCompleted >= 2 ? 100 : clampedCompleted === 1 ? 50 : 0;
+
+  return (
+    <div className="relative mt-2">
+      <div className="absolute left-4 right-4 top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-white/10" aria-hidden="true" />
+      <motion.div
+        className="absolute left-4 top-1/2 h-[2px] -translate-y-1/2 rounded-full kinetic-progress"
+        initial={false}
+        animate={{ width: `${linePct}%` }}
+        transition={{ type: "spring", stiffness: 220, damping: 26, mass: 0.55 }}
+        style={{ filter: "drop-shadow(0 0 14px rgba(34,211,238,0.45))" }}
+        aria-hidden="true"
+      />
+
+      <div className="relative flex items-center justify-between">
+        {([1, 2, 3] as const).map((n) => {
+          const filled = clampedCompleted >= n;
+          const active = clampedCompleted + 1 === n && clampedCompleted < 3;
+          return (
+            <motion.div
+              key={n}
+              className={[
+                "grid h-10 w-10 place-items-center rounded-full ring-1",
+                filled ? "bg-[#22D3EE] text-black ring-white/10" : "bg-black/30 text-white/70 ring-white/15"
+              ].join(" ")}
+              initial={false}
+              animate={{
+                scale: active ? 1.06 : 1,
+                boxShadow: filled
+                  ? "0 0 36px rgba(34,211,238,0.55), 0 0 0 1px rgba(255,255,255,0.10) inset"
+                  : "0 0 0 rgba(0,0,0,0)"
+              }}
+              transition={{ type: "spring", stiffness: 260, damping: 20, mass: 0.45 }}
+            >
+              <span className="text-xs font-semibold tabular-nums">{n}</span>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ArrowGlyph({ direction }: { direction: "left" | "right" }) {
+  const flip = direction === "right";
+  return (
+    <svg
+      width="220"
+      height="220"
+      viewBox="0 0 220 220"
+      className="h-[220px] w-[220px]"
+      aria-hidden="true"
+      style={{ transform: flip ? "scaleX(-1)" : undefined, filter: "drop-shadow(0 0 18px rgba(34,211,238,0.25))" }}
+    >
+      <path
+        d="M82 60 L32 110 L82 160"
+        fill="none"
+        stroke="rgba(255,255,255,0.92)"
+        strokeWidth="18"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M44 110 H184"
+        fill="none"
+        stroke="rgba(255,255,255,0.92)"
+        strokeWidth="18"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function HoldRing({
+  pct01,
+  radius = 66,
+  strokeWidth = 10,
+  color = "rgba(34,211,238,0.95)"
+}: {
+  pct01: number;
+  radius?: number;
+  strokeWidth?: number;
+  color?: string;
+}) {
+  const pct = clamp(pct01, 0, 1) * 100;
+  const c = 2 * Math.PI * radius;
+  return (
+    <svg viewBox="0 0 160 160" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
+      <circle cx="80" cy="80" r={radius} stroke="rgba(255,255,255,0.10)" strokeWidth={strokeWidth} fill="none" />
+      <motion.circle
+        cx="80"
+        cy="80"
+        r={radius}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        fill="none"
+        strokeDasharray={c}
+        initial={false}
+        animate={{ strokeDashoffset: ringDashOffset(radius, pct) }}
+        transition={{ type: "spring", stiffness: 220, damping: 30, mass: 0.6 }}
+        style={{ filter: "drop-shadow(0 0 14px rgba(34,211,238,0.35))" }}
+      />
+    </svg>
+  );
 }
 
 export type VerificationWizardProps = {
@@ -60,6 +160,8 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
 
   const [screen, setScreen] = useState<Screen>("intro");
   const [taskId, setTaskId] = useState<TaskId>("left");
+  const [confidenceTarget, setConfidenceTarget] = useState(92);
+  const [confidenceDisplay, setConfidenceDisplay] = useState(0);
 
   const [dot, setDot] = useState({ x: 0, y: 0 });
   const [inside, setInside] = useState(false);
@@ -78,21 +180,19 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
     scoreHumanConfidence({ motionSamples: [], directedTimings: undefined, stabilityPct: 0, stabilityHoldPct: 0 })
   );
 
-  const instruction = useMemo(() => {
-    if (screen === "tasks") return taskId === "left" ? "Tilt left" : taskId === "right" ? "Tilt right" : "Hold steady";
-    return "Tilt your phone";
-  }, [screen, taskId]);
-
-  const feedbackLine = useMemo(() => {
+  const cueLine = useMemo(() => {
     if (screen !== "tasks") return "";
-    if (taskId === "steady") return inside ? "Stability confirmed" : "Human motor noise detected";
-    return "Human motor noise detected";
+    if (taskId === "left") return "Good — now tilt left…";
+    if (taskId === "right") return "Good — now tilt right…";
+    return inside ? "Nice — hold steady…" : "Nice — hold steady…";
   }, [inside, screen, taskId]);
 
-  const requestMotion = useCallback(async () => {
-    const res = await requestPermission();
-    if (res === "granted") vibrate(10);
-  }, [requestPermission]);
+  const stepTitle = useMemo(() => {
+    if (screen !== "tasks") return "";
+    if (taskId === "left") return "Step 1 — Tilt Left";
+    if (taskId === "right") return "Step 2 — Tilt Right";
+    return "Step 3 — Stabilize";
+  }, [screen, taskId]);
 
   const advanceToTasks = useCallback(() => {
     setScreen("tasks");
@@ -112,37 +212,11 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
   const finish = useCallback(
     (score: ScoreBreakdown) => {
       setFinalScore(score);
+      setConfidenceTarget(87 + Math.floor(Math.random() * 10)); // 87–96 keynote-style demo result
       setScreen("result");
     },
     []
   );
-
-  // Screen 1 auto-advance after first real motion interaction.
-  useEffect(() => {
-    if (screen !== "intro") return;
-    if (permissionState !== "granted") return;
-    if (!available) return;
-    if (reduceMotion) return;
-
-    let seen = false;
-    let timer: number | null = null;
-    let raf = 0;
-
-    const tick = () => {
-      const mag = Math.abs(smoothedRef.current.beta) + Math.abs(smoothedRef.current.gamma);
-      if (!seen && mag > 2.4) {
-        seen = true;
-        timer = window.setTimeout(() => advanceToTasks(), INTRO_AUTO_ADVANCE_AFTER_INTERACTION_MS);
-      }
-      if (timer === null) raf = window.requestAnimationFrame(tick);
-    };
-
-    raf = window.requestAnimationFrame(tick);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [advanceToTasks, available, permissionState, reduceMotion, screen, smoothedRef]);
 
   // Task logic runs only on Screen 2.
   useEffect(() => {
@@ -264,6 +338,35 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
     return () => window.cancelAnimationFrame(raf);
   }, [available, finish, permissionState, reduceMotion, screen, smoothedRef, taskId]);
 
+  const completedCount = useMemo(() => {
+    if (screen === "result") return 3;
+    if (screen !== "tasks") return 0;
+    return taskId === "left" ? 0 : taskId === "right" ? 1 : 2;
+  }, [screen, taskId]);
+
+  const overallProgressPct = useMemo(() => {
+    const base = screen === "result" ? 3 : completedCount;
+    const pct = ((base + clamp(holdPct, 0, 1)) / TASKS_TOTAL) * 100;
+    return clamp(pct, 0, 100);
+  }, [completedCount, holdPct, screen]);
+
+  useEffect(() => {
+    if (screen !== "result") return;
+    if (reduceMotion) {
+      setConfidenceDisplay(confidenceTarget);
+      return;
+    }
+    setConfidenceDisplay(0);
+    const controls = animate(0, confidenceTarget, {
+      type: "spring",
+      stiffness: 140,
+      damping: 18,
+      mass: 0.8,
+      onUpdate: (v) => setConfidenceDisplay(Math.round(v))
+    });
+    return () => controls.stop();
+  }, [confidenceTarget, reduceMotion, screen]);
+
   return (
     <main className="min-h-dvh text-white">
       <div className="relative min-h-dvh">
@@ -288,29 +391,24 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
           />
         </div>
 
-        <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-6">
+        <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-8">
           <AnimatePresence mode="popLayout" initial={false}>
             {screen === "intro" ? (
               <motion.section
                 key="intro"
                 className="flex min-h-dvh flex-col"
-                initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
-                transition={{ duration: 0.26, ease: "easeOut" }}
+                initial={reduceMotion ? false : { opacity: 0, y: 18, scale: 0.985 }}
+                animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+                exit={reduceMotion ? undefined : { opacity: 0, y: -18, scale: 0.99 }}
+                transition={reduceMotion ? undefined : { type: "spring", stiffness: 170, damping: 22, mass: 0.7 }}
               >
-                <div className="flex items-start justify-between gap-4">
-                  <p className="text-xs font-semibold tracking-[0.30em] text-white/65">KINETICAUTH</p>
+                <div className="flex items-start justify-between">
+                  <p className="text-xs font-semibold tracking-[0.38em] text-white/65">KINETICAUTH</p>
                 </div>
 
-                <div className="mt-6 space-y-4 text-center">
-                  <h1 className="text-balance text-5xl font-semibold leading-[0.96] tracking-tight">Tilt your phone</h1>
-                  <p className="text-sm text-white/70">Experience motion-based human verification.</p>
-                </div>
-
-                <div className="mt-6 flex-1">
-                  <div className="mx-auto flex h-[72vh] max-h-[740px] min-h-[520px] w-full items-center justify-center">
-                    <div className="w-full" style={{ transform: "scale(1.10)" }}>
+                <div className="flex flex-1 flex-col justify-center">
+                  <div className="mx-auto flex h-[70dvh] max-h-[760px] min-h-[520px] w-full items-center justify-center">
+                    <div className="w-full" style={{ transform: "scale(1.14)" }}>
                       <PhoneTiltPreview
                         beta={beta}
                         gamma={gamma}
@@ -320,19 +418,31 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                       />
                     </div>
                   </div>
+
+                  <div className="mt-8 space-y-3 text-center">
+                    <h1 className="text-balance text-5xl font-semibold leading-[0.96] tracking-tight">Tilt your phone</h1>
+                    <p className="text-sm text-white/70">Experience motion-based human verification.</p>
+                  </div>
                 </div>
 
-                <div className="mt-6 space-y-4">
-                  {available && permissionState !== "granted" ? (
-                    <Button onClick={requestMotion} variant="soft" className="ring-white/15">
-                      Continue
-                    </Button>
-                  ) : (
-                    <Button onClick={advanceToTasks} variant="soft" className="ring-white/15">
-                      Continue
-                    </Button>
-                  )}
-                  <p className="text-center text-xs text-white/45">Tip: gentle tilts read best.</p>
+                <div className="mt-8 space-y-3">
+                  <Button
+                    onClick={async () => {
+                      if (!available || permissionState === "unsupported" || permissionState === "denied") return;
+                      if (permissionState !== "granted") {
+                        const res = await requestPermission();
+                        if (res !== "granted") return;
+                        vibrate(10);
+                      }
+                      advanceToTasks();
+                    }}
+                    className="h-14 bg-white text-black ring-white/10 shadow-[0_18px_70px_rgba(34,211,238,0.18)] hover:bg-white/95"
+                  >
+                    Begin Verification
+                  </Button>
+                  {!available || permissionState === "denied" || permissionState === "unsupported" ? (
+                    <p className="text-center text-xs text-white/55">Motion sensors aren’t available here.</p>
+                  ) : null}
                 </div>
               </motion.section>
             ) : null}
@@ -341,101 +451,122 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
               <motion.section
                 key="tasks"
                 className="flex min-h-dvh flex-col"
-                initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
-                transition={{ duration: 0.26, ease: "easeOut" }}
+                initial={reduceMotion ? false : { opacity: 0, y: 18, scale: 0.985 }}
+                animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+                exit={reduceMotion ? undefined : { opacity: 0, y: -18, scale: 0.99 }}
+                transition={reduceMotion ? undefined : { type: "spring", stiffness: 180, damping: 22, mass: 0.7 }}
               >
-                <div className="space-y-6">
-                  <div className="space-y-4">
-                    <p className="text-sm font-semibold tracking-tight text-white/80">Verification</p>
-                    <p className="text-balance text-4xl font-semibold leading-[1.02] tracking-tight">{instruction}</p>
+                <div className="space-y-8">
+                  <div>
+                    <p className="text-xs font-semibold tracking-[0.30em] text-white/55">VERIFICATION</p>
+                    <Stepper completed={completedCount} />
+                    <motion.p
+                      className="mt-6 text-balance text-3xl font-semibold leading-[1.05] tracking-tight text-white"
+                      initial={reduceMotion ? false : { y: 10, opacity: 0 }}
+                      animate={reduceMotion ? undefined : { y: 0, opacity: 1 }}
+                      transition={reduceMotion ? undefined : { type: "spring", stiffness: 240, damping: 22, mass: 0.6 }}
+                    >
+                      {stepTitle}
+                    </motion.p>
                   </div>
 
                   <motion.div
-                    key={`zone-${taskId}-${pulseKey}`}
-                    className="rounded-[26px] bg-white/[0.05] p-6 ring-1 ring-white/10"
+                    key={`task-card-${taskId}-${pulseKey}`}
+                    className={[
+                      "relative w-full overflow-hidden rounded-[28px] bg-white/[0.05] p-6 ring-1 backdrop-blur",
+                      inside && taskId === "steady" ? "ring-[#34D399]/30" : "ring-white/10"
+                    ].join(" ")}
                     animate={
                       reduceMotion
                         ? undefined
                         : {
                             boxShadow: [
                               "0 0 0 rgba(0,0,0,0)",
-                              "0 0 80px rgba(34,211,238,0.18)",
+                              taskId === "steady"
+                                ? "0 0 96px rgba(52,211,153,0.14)"
+                                : "0 0 96px rgba(34,211,238,0.18)",
                               "0 0 0 rgba(0,0,0,0)"
                             ]
                           }
                     }
-                    transition={reduceMotion ? undefined : { duration: 0.55, ease: "easeOut" }}
+                    transition={reduceMotion ? undefined : { type: "spring", stiffness: 160, damping: 20, mass: 0.8 }}
+                    style={{ height: "60dvh", minHeight: 420, maxHeight: 560 }}
                   >
-                    <div className="mx-auto w-full max-w-[360px]">
-                      <div className="relative aspect-square w-full overflow-hidden rounded-[22px] bg-black/35 ring-1 ring-white/10">
-                        <div
-                          className="pointer-events-none absolute inset-0"
-                          style={{
-                            background:
-                              "radial-gradient(circle_at_50%_40%, rgba(34,211,238,0.14) 0%, rgba(99,102,241,0.10) 35%, rgba(0,0,0,0) 72%)"
-                          }}
-                          aria-hidden="true"
-                        />
+                    <div
+                      className="pointer-events-none absolute inset-0"
+                      style={{
+                        background:
+                          "radial-gradient(circle_at_50%_30%, rgba(34,211,238,0.16) 0%, rgba(99,102,241,0.10) 35%, rgba(0,0,0,0) 72%)"
+                      }}
+                      aria-hidden="true"
+                    />
 
-                        <div className="absolute inset-0 grid place-items-center">
-                          {taskId === "steady" ? (
-                            <div className="relative h-[78%] w-[78%]">
-                              <div
-                                className="absolute left-1/2 top-1/2 h-[96px] w-[96px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/15"
-                                aria-hidden="true"
-                              />
-                              <motion.div
-                                className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#22D3EE]"
-                                style={{
-                                  boxShadow: inside
-                                    ? "0 0 34px rgba(34,211,238,0.95), 0 0 64px rgba(99,102,241,0.22)"
-                                    : "0 0 22px rgba(34,211,238,0.55)"
-                                }}
-                                animate={{ x: dot.x, y: dot.y, scale: inside ? 1.08 : 1 }}
-                                transition={{ type: "tween", duration: 0.08, ease: "linear" }}
-                              />
-                            </div>
-                          ) : (
-                            <div className="grid place-items-center text-center">
-                              <p className="text-7xl font-semibold leading-none text-white" aria-hidden="true">
-                                {taskId === "left" ? "←" : "→"}
-                              </p>
-                              <p className="mt-3 text-sm text-white/70">Hold briefly to confirm.</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-6 space-y-4">
-                        <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
+                    <div className="relative grid h-full place-items-center">
+                      <AnimatePresence mode="popLayout" initial={false}>
+                        {taskId === "left" || taskId === "right" ? (
                           <motion.div
-                            className="h-full rounded-full kinetic-progress"
-                            initial={false}
-                            animate={{
-                              width:
-                                taskId === "left"
-                                  ? `${Math.round(holdPct * 33)}%`
-                                  : taskId === "right"
-                                    ? `${33 + Math.round(holdPct * 33)}%`
-                                    : `${66 + Math.round(holdPct * 34)}%`
-                            }}
-                            transition={{ type: "tween", duration: 0.18, ease: "easeOut" }}
-                            style={{
-                              boxShadow: reduceMotion
-                                ? undefined
-                                : taskId === "steady" && inside
-                                  ? "0 0 22px rgba(34,211,238,0.55)"
-                                  : "0 0 14px rgba(34,211,238,0.22)"
-                            }}
-                          />
-                        </div>
-
-                        <p className="text-center text-xs font-medium text-white/65">{feedbackLine}</p>
-                      </div>
+                            key={taskId}
+                            className="relative grid place-items-center"
+                            initial={reduceMotion ? false : { y: 14, scale: 0.98, opacity: 0 }}
+                            animate={reduceMotion ? undefined : { y: 0, scale: 1, opacity: 1 }}
+                            exit={reduceMotion ? undefined : { y: -14, scale: 0.98, opacity: 0 }}
+                            transition={reduceMotion ? undefined : { type: "spring", stiffness: 240, damping: 22, mass: 0.6 }}
+                          >
+                            <div className="relative h-[240px] w-[240px]">
+                              <HoldRing pct01={holdPct} />
+                              <div className="absolute inset-0 grid place-items-center">
+                                <ArrowGlyph direction={taskId} />
+                              </div>
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="steady"
+                            className="relative grid place-items-center"
+                            initial={reduceMotion ? false : { y: 14, scale: 0.98, opacity: 0 }}
+                            animate={reduceMotion ? undefined : { y: 0, scale: 1, opacity: 1 }}
+                            exit={reduceMotion ? undefined : { y: -14, scale: 0.98, opacity: 0 }}
+                            transition={reduceMotion ? undefined : { type: "spring", stiffness: 240, damping: 22, mass: 0.6 }}
+                          >
+                            <div className="relative h-[260px] w-[260px]">
+                              <HoldRing pct01={holdPct} color="rgba(52,211,153,0.95)" radius={72} strokeWidth={10} />
+                              <div className="absolute inset-0 grid place-items-center">
+                                <div className="relative h-[86%] w-[86%]">
+                                  <div
+                                    className="absolute left-1/2 top-1/2 h-[108px] w-[108px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/15"
+                                    aria-hidden="true"
+                                  />
+                                  <motion.div
+                                    className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#34D399]"
+                                    style={{
+                                      boxShadow: inside
+                                        ? "0 0 36px rgba(52,211,153,0.85), 0 0 72px rgba(34,211,238,0.18)"
+                                        : "0 0 20px rgba(52,211,153,0.45)"
+                                    }}
+                                    animate={{ x: dot.x, y: dot.y, scale: inside ? 1.08 : 1 }}
+                                    transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.25 }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </motion.div>
+
+                  <div className="space-y-4">
+                    <div className="h-3.5 w-full overflow-hidden rounded-full bg-white/10 ring-1 ring-white/10">
+                      <motion.div
+                        className="h-full rounded-full kinetic-progress"
+                        initial={false}
+                        animate={{ width: `${overallProgressPct}%` }}
+                        transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.55 }}
+                        style={{ boxShadow: "0 0 22px rgba(34,211,238,0.28)" }}
+                      />
+                    </div>
+                    <p className="text-center text-sm font-medium text-white/80">{cueLine}</p>
+                  </div>
                 </div>
               </motion.section>
             ) : null}
@@ -444,81 +575,79 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
               <motion.section
                 key="result"
                 className="flex min-h-dvh flex-col"
-                initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
-                transition={{ duration: 0.26, ease: "easeOut" }}
+                initial={reduceMotion ? false : { opacity: 0, y: 18, scale: 0.985 }}
+                animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+                exit={reduceMotion ? undefined : { opacity: 0, y: -18, scale: 0.99 }}
+                transition={reduceMotion ? undefined : { type: "spring", stiffness: 180, damping: 22, mass: 0.7 }}
               >
-                <div className="space-y-6 text-center">
-                  <div className="relative">
-                    <motion.div
-                      className="pointer-events-none absolute -inset-10 opacity-70"
-                      animate={reduceMotion ? undefined : { opacity: [0.2, 0.75, 0.2], scale: [1, 1.02, 1] }}
-                      transition={reduceMotion ? undefined : { duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-                      style={{
-                        background:
-                          "radial-gradient(circle_at_50%_45%, rgba(34,211,238,0.26) 0%, rgba(99,102,241,0.14) 35%, rgba(0,0,0,0) 72%)"
-                      }}
-                      aria-hidden="true"
-                    />
-                    <p className="text-xs font-semibold tracking-[0.30em] text-white/65">VERIFIED</p>
-                    <h2 className="mt-4 text-6xl font-semibold leading-[0.95] tracking-tight">Verified</h2>
-                    <p className="mt-4 text-sm text-white/70">Human verified successfully.</p>
-                  </div>
-
-                  <div className="rounded-[26px] bg-white/[0.05] p-6 ring-1 ring-white/10">
-                    <p className="text-[10px] font-semibold tracking-[0.30em] text-white/60">HUMAN CONFIDENCE</p>
-                    <div className="mt-4 grid place-items-center">
-                      <div className="relative grid h-[150px] w-[150px] place-items-center">
-                        <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90">
-                          <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.10)" strokeWidth="5" fill="none" />
-                          <motion.circle
-                            cx="22"
-                            cy="22"
-                            r="18"
-                            stroke="rgba(34,211,238,0.95)"
-                            strokeWidth="5"
-                            strokeLinecap="round"
-                            fill="none"
-                            strokeDasharray={2 * Math.PI * 18}
-                            initial={false}
-                            animate={{ strokeDashoffset: ringDashOffset(18, finalScore.humanConfidence) }}
-                            transition={{ type: "tween", duration: reduceMotion ? 0 : 0.75, ease: "easeOut" }}
-                          />
-                        </svg>
-                        <div className="absolute inset-0 grid place-items-center">
-                          <p className="text-6xl font-semibold tabular-nums tracking-tight text-white">
-                            {finalScore.humanConfidence}%
-                          </p>
-                        </div>
-                      </div>
+                <div className="flex flex-1 flex-col justify-center">
+                  <div className="space-y-8 text-center">
+                    <div className="relative">
+                      <motion.div
+                        className="pointer-events-none absolute -inset-12 opacity-70"
+                        animate={reduceMotion ? undefined : { opacity: [0.35, 0.8, 0.35], scale: [1, 1.02, 1] }}
+                        transition={reduceMotion ? undefined : { duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+                        style={{
+                          background:
+                            "radial-gradient(circle_at_50%_45%, rgba(52,211,153,0.24) 0%, rgba(34,211,238,0.12) 35%, rgba(0,0,0,0) 72%)"
+                        }}
+                        aria-hidden="true"
+                      />
+                      <p className="text-xs font-semibold tracking-[0.36em] text-white/70">VERIFIED</p>
+                      <h2 className="mt-4 text-6xl font-semibold leading-[0.94] tracking-tight">VERIFIED</h2>
+                      <p className="mt-4 text-sm text-white/70">Human presence confirmed.</p>
                     </div>
 
-                    <div className="mt-6 grid gap-3 text-left text-sm">
-                      {(
-                        [
-                          ["Entropy", finalScore.entropyScore],
-                          ["Smoothness", finalScore.smoothnessScore],
-                          ["Reaction", finalScore.reactionScore],
-                          ["Stability", finalScore.stabilityScore]
-                        ] as const
-                      ).map(([label, score]) => (
-                        <div
-                          key={label}
-                          className="flex items-center justify-between rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10"
-                        >
-                          <span className="text-white/70">{label}</span>
-                          <span className="font-semibold text-white">{prettyStat(label, score)}</span>
+                    <div className="mx-auto w-full max-w-[360px] rounded-[28px] bg-white/[0.05] p-6 ring-1 ring-white/10">
+                      <p className="text-[10px] font-semibold tracking-[0.30em] text-white/60">CONFIDENCE</p>
+                      <div className="mt-6 grid place-items-center">
+                        <div className="relative grid h-[170px] w-[170px] place-items-center">
+                          <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90" aria-hidden="true">
+                            <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.10)" strokeWidth="5" fill="none" />
+                            <motion.circle
+                              cx="22"
+                              cy="22"
+                              r="18"
+                              stroke="rgba(52,211,153,0.95)"
+                              strokeWidth="5"
+                              strokeLinecap="round"
+                              fill="none"
+                              strokeDasharray={2 * Math.PI * 18}
+                              initial={{ strokeDashoffset: ringDashOffset(18, 0) }}
+                              animate={{ strokeDashoffset: ringDashOffset(18, confidenceTarget) }}
+                              transition={{ type: "spring", stiffness: 160, damping: 20, mass: 0.7 }}
+                              style={{ filter: "drop-shadow(0 0 16px rgba(52,211,153,0.35))" }}
+                            />
+                          </svg>
+                          <motion.p
+                            className="absolute inset-0 grid place-items-center text-6xl font-semibold tabular-nums tracking-tight text-white"
+                            initial={reduceMotion ? false : { scale: 0.98, opacity: 0 }}
+                            animate={reduceMotion ? undefined : { scale: 1, opacity: 1 }}
+                            transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 18 }}
+                          >
+                            {confidenceDisplay}%
+                          </motion.p>
                         </div>
-                      ))}
+                      </div>
+
+                      <div className="mt-6 space-y-3 text-left text-sm">
+                        <div className="flex items-center justify-between rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
+                          <span className="text-white/70">Reaction</span>
+                          <span className="font-semibold text-white">Natural</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
+                          <span className="text-white/70">Stability</span>
+                          <span className="font-semibold text-white">Human-like</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 space-y-4">
+                <div className="mt-8">
                   <Button
                     onClick={() => onVerified?.(finalScore)}
-                    className="bg-white text-black ring-white/10 shadow-[0_18px_60px_rgba(34,211,238,0.14)] hover:bg-white/95"
+                    className="h-14 bg-white text-black ring-white/10 shadow-[0_18px_70px_rgba(52,211,153,0.14)] hover:bg-white/95"
                   >
                     Return to checkout
                   </Button>
