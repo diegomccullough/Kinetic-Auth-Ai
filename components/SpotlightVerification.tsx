@@ -298,16 +298,10 @@ export default function SpotlightVerification({
 
           <div className="relative px-5 pb-6 pt-6">
             <header className="text-center">
-              <p className="text-xs font-medium tracking-[0.22em] text-white/60">SPOTLIGHT</p>
-              <h1
-                className={[
-                  "mt-2 text-balance font-semibold tracking-tight text-white",
-                  demo ? "text-[28px]" : "text-[22px]"
-                ].join(" ")}
-              >
+              <h1 className="mt-2 text-[22px] font-semibold tracking-tight text-white sm:text-2xl">
                 {verificationState === "success" ? "You’re in." : "Hold steady."}
               </h1>
-              <p className="mt-1 text-sm text-white/65">
+              <p className="mt-1 text-sm text-white/70">
                 {verificationState === "success" ? "Verification complete." : "Keep the dot centered."}
               </p>
             </header>
