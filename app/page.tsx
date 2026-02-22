@@ -1,68 +1,94 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { useEffect, useMemo, useState } from "react";
+import VerificationOverlay from "@/components/VerificationOverlay";
 
-function HomePageClient() {
+export default function HomePage() {
   const reduceMotion = useReducedMotion();
-  const searchParams = useSearchParams();
-  const verified = searchParams.get("verified") === "true";
-  const [demand, setDemand] = useState(98341);
-  const [pulse, setPulse] = useState(0);
+
+  const [verified, setVerified] = useState(false);
+  const [overlayOpen, setOverlayOpen] = useState(false);
   const [placed, setPlaced] = useState(false);
+
+  const [queue, setQueue] = useState(98341);
+  const [pulse, setPulse] = useState(0);
 
   useEffect(() => {
     if (reduceMotion) return;
     const id = window.setInterval(() => {
       setPulse((p) => p + 1);
-      setDemand((n) => n + 7 + Math.floor(Math.random() * 19));
+      setQueue((n) => n + 7 + Math.floor(Math.random() * 19));
     }, 650);
     return () => window.clearInterval(id);
   }, [reduceMotion]);
 
-  const demandLabel = useMemo(() => `${demand.toLocaleString()} people`, [demand]);
+  const queueLabel = useMemo(() => `${queue.toLocaleString()} people`, [queue]);
 
   return (
-    <main className="min-h-dvh px-4 pb-10 pt-8">
-      <div className="mx-auto w-full max-w-[440px]">
-        <div className="relative overflow-hidden rounded-[30px] ring-1 ring-white/10">
-          <div className="absolute inset-0 bg-[radial-gradient(130%_100%_at_50%_0%,rgba(56,189,248,0.18)_0%,rgba(99,102,241,0.13)_30%,rgba(0,0,0,1)_78%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(90%_60%_at_50%_38%,rgba(255,255,255,0.08)_0%,rgba(0,0,0,0)_62%)]" />
+    <main className="min-h-dvh bg-gradient-to-b from-white via-slate-50 to-slate-100 px-4 pb-12 pt-8 text-slate-900">
+      <div className={["mx-auto w-full max-w-[980px]", overlayOpen ? "pointer-events-none select-none blur-[2px]" : ""].join(" ")}>
+        <motion.div
+          initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+          animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="space-y-6"
+        >
+          <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm backdrop-blur">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold tracking-[0.26em] text-slate-500">TICKET PLATFORM</p>
+                <h1 className="mt-2 text-balance text-3xl font-semibold tracking-tight">
+                  BISON LIVE: <span className="text-slate-700">Homecoming Night</span>
+                </h1>
+                <p className="mt-2 text-sm text-slate-600">Neon City Arena • Doors 7:00 PM • Show 8:30 PM</p>
+              </div>
 
-          <motion.div
-            className="relative px-5 pb-6 pt-6"
-            initial={reduceMotion ? false : { opacity: 0, y: 10, scale: 0.99 }}
-            animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.55, ease: "easeOut" }}
-          >
-            <header className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold tracking-[0.26em] text-white/60">ONSLAUGHT TOUR</p>
-                  <h1 className="mt-3 text-balance text-[32px] font-semibold leading-[1.05] tracking-tight">
-                    BISON LIVE: <span className="text-white/85">Homecoming Night</span>
-                  </h1>
-                  <p className="mt-2 text-sm text-white/65">Neon City Arena • Doors 7:00 PM • Show 8:30 PM</p>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                <p className="text-[10px] font-semibold tracking-[0.22em] text-slate-500">SECURITY</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span
+                    className={[
+                      "h-2 w-2 rounded-full",
+                      verified ? "bg-emerald-500 shadow-[0_0_18px_rgba(16,185,129,0.35)]" : "bg-amber-400"
+                    ].join(" ")}
+                    aria-hidden="true"
+                  />
+                  <span className="text-xs font-semibold tracking-tight text-slate-800">
+                    {verified ? "Verification Complete" : "Verification Required"}
+                  </span>
                 </div>
+              </div>
+            </div>
 
-                <div className="shrink-0 rounded-2xl bg-white/5 px-3 py-2 ring-1 ring-white/10">
-                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">SECURITY</p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span
-                      className={[
-                        "h-2 w-2 rounded-full",
-                        verified ? "bg-emerald-300 shadow-[0_0_18px_rgba(16,185,129,0.35)]" : "bg-amber-300/90"
-                      ].join(" ")}
-                      aria-hidden="true"
-                    />
-                    <span className="text-xs font-semibold tracking-tight">{verified ? "Verified" : "Step-up"}</span>
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-r from-sky-50 via-indigo-50 to-emerald-50 p-5">
+              <div className="absolute inset-0 bg-[radial-gradient(80%_100%_at_20%_10%,rgba(56,189,248,0.25)_0%,rgba(99,102,241,0.16)_40%,rgba(16,185,129,0.10)_70%,rgba(255,255,255,0)_100%)]" />
+              <div className="relative flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold tracking-[0.22em] text-slate-600">EVENT HERO</p>
+                  <p className="mt-2 text-lg font-semibold tracking-tight">Limited release seats available</p>
+                  <p className="mt-1 text-sm text-slate-600">A realistic checkout flow with step-up verification under high demand.</p>
+                </div>
+                <div className="rounded-2xl bg-white/70 px-4 py-3 shadow-sm ring-1 ring-slate-200/70 backdrop-blur">
+                  <p className="text-[10px] font-semibold tracking-[0.22em] text-slate-500">LIVE QUEUE</p>
+                  <div className="mt-1 flex items-baseline gap-2">
+                    <AnimatePresence mode="popLayout" initial={false}>
+                      <motion.span
+                        key={queue}
+                        className="text-lg font-semibold tabular-nums tracking-tight text-slate-900"
+                        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                        exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                      >
+                        {queueLabel}
+                      </motion.span>
+                    </AnimatePresence>
+                    <span className="text-xs text-slate-600">in queue</span>
                   </div>
                 </div>
               </div>
-            </header>
+            </div>
 
             <AnimatePresence initial={false}>
               {verified ? (
@@ -72,115 +98,94 @@ function HomePageClient() {
                   animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
                   exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
                   transition={{ duration: 0.22, ease: "easeOut" }}
-                  className="mt-5 rounded-[24px] bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200 ring-1 ring-emerald-400/15"
+                  className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
                 >
-                  <span className="font-semibold">Verification passed</span> — checkout unlocked
+                  <span className="font-semibold">Verification Complete</span> — checkout unlocked.
                 </motion.div>
               ) : null}
             </AnimatePresence>
+          </header>
 
-            <Card className="mt-6">
-              <div className="absolute inset-0 bg-[radial-gradient(100%_120%_at_50%_0%,rgba(56,189,248,0.14)_0%,rgba(0,0,0,0)_65%)]" />
-              <div className="relative p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold tracking-[0.22em] text-white/60">HIGH DEMAND</p>
-                    <p className="mt-2 text-lg font-semibold tracking-tight">High demand detected</p>
-                    <p className="mt-1 text-sm text-white/65">
-                      {verified ? "Checkout is unlocked for this session." : "Traffic is surging. Verification required at checkout."}
-                    </p>
-                  </div>
-
+          <section className="grid gap-6 lg:grid-cols-[1.55fr_1fr]">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold tracking-tight">Seats</h2>
+                <div className="flex items-center gap-2 text-xs text-slate-600">
                   <motion.div
-                    className="relative grid h-12 w-12 place-items-center rounded-2xl bg-black/30 ring-1 ring-white/10"
-                    animate={
-                      reduceMotion
-                        ? undefined
-                        : { boxShadow: pulse % 2 ? "0 0 0 rgba(0,0,0,0)" : "0 0 56px rgba(56,189,248,0.16)" }
-                    }
+                    className="grid h-7 w-7 place-items-center rounded-xl border border-slate-200 bg-white shadow-sm"
+                    animate={reduceMotion ? undefined : { boxShadow: pulse % 2 ? "0 0 0 rgba(0,0,0,0)" : "0 0 24px rgba(56,189,248,0.18)" }}
                     transition={{ duration: 0.35 }}
                     aria-hidden="true"
                   >
-                    <motion.div
-                      className="h-2.5 w-2.5 rounded-full bg-sky-200"
-                      animate={reduceMotion ? undefined : { opacity: [0.5, 1, 0.5], scale: [1, 1.12, 1] }}
-                      transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
-                      style={{ boxShadow: "0 0 22px rgba(56,189,248,0.70)" }}
-                    />
+                    <div className="h-2 w-2 rounded-full bg-sky-500" />
                   </motion.div>
-                </div>
-
-                <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl bg-white/[0.04] px-4 py-3 ring-1 ring-white/10">
-                  <p className="text-xs font-semibold tracking-[0.22em] text-white/60">LIVE DEMAND</p>
-                  <div className="flex items-baseline gap-2">
-                    <AnimatePresence mode="popLayout" initial={false}>
-                      <motion.span
-                        key={demand}
-                        className="text-base font-semibold tabular-nums tracking-tight text-white"
-                        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                        exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-                        transition={{ duration: 0.18, ease: "easeOut" }}
-                      >
-                        {demandLabel}
-                      </motion.span>
-                    </AnimatePresence>
-                    <span className="text-xs text-white/55">in queue</span>
-                  </div>
+                  <span>Limited release</span>
                 </div>
               </div>
-            </Card>
 
-            <Card className="mt-3">
-              <div className="relative p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold tracking-[0.22em] text-white/60">SEAT</p>
-                    <p className="mt-2 text-lg font-semibold tracking-tight">Section A • Row 3</p>
-                    <p className="mt-1 text-sm text-white/65">Limited release. One per customer.</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-semibold tracking-[0.22em] text-white/60">PRICE</p>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">$349</p>
-                    <p className="mt-1 text-xs text-white/55">Incl. fees</p>
+              {[
+                { title: "Section A • Row 3", price: 349, note: "Closest view. One per customer." },
+                { title: "Section B • Row 8", price: 249, note: "Great acoustics. Limited inventory." },
+                { title: "Section C • Row 14", price: 169, note: "Budget pick. Selling fast." }
+              ].map((s) => (
+                <div key={s.title} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold tracking-[0.22em] text-slate-500">SEAT</p>
+                      <p className="mt-2 text-lg font-semibold tracking-tight">{s.title}</p>
+                      <p className="mt-1 text-sm text-slate-600">{s.note}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-semibold tracking-[0.22em] text-slate-500">PRICE</p>
+                      <p className="mt-2 text-2xl font-semibold tabular-nums">${s.price}</p>
+                      <p className="mt-1 text-xs text-slate-500">Incl. fees</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Card>
+              ))}
+            </div>
 
-            <motion.div
-              className="mt-5"
-              initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-              transition={{ delay: 0.08, duration: 0.45, ease: "easeOut" }}
-            >
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  disabled={!verified}
-                  onClick={() => {
-                    setPlaced(true);
-                    try {
-                      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") navigator.vibrate(12);
-                    } catch {
-                      // ignore
-                    }
-                  }}
-                  className={[
-                    "inline-flex h-12 w-full items-center justify-center rounded-2xl px-4 text-sm font-semibold ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black",
-                    verified
-                      ? "bg-white text-black ring-white/10 shadow-[0_18px_60px_rgba(16,185,129,0.10)] hover:bg-white/95 active:scale-[0.99]"
-                      : "bg-white/5 text-white/45 ring-white/10"
-                  ].join(" ")}
-                >
-                  Place Order
-                </button>
+            <aside className="space-y-4">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-semibold tracking-[0.22em] text-slate-500">CHECKOUT</p>
+                <p className="mt-2 text-lg font-semibold tracking-tight">Secure checkout</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {verified
+                    ? "You’re verified for this session. You can proceed to checkout."
+                    : "High-demand protection is enabled. Complete verification to unlock checkout."}
+                </p>
 
-                {!verified ? (
-                  <Button href="/verify" variant="soft" className="h-12">
-                    Verify to unlock checkout
-                  </Button>
-                ) : null}
+                <div className="mt-4 space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!verified) setOverlayOpen(true);
+                    }}
+                    disabled={verified}
+                    className={[
+                      "inline-flex h-12 w-full items-center justify-center rounded-2xl px-4 text-sm font-semibold ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+                      verified
+                        ? "bg-slate-100 text-slate-400 ring-slate-200"
+                        : "bg-slate-900 text-white ring-slate-900/10 shadow-sm hover:bg-slate-800 active:scale-[0.99]"
+                    ].join(" ")}
+                  >
+                    {verified ? "Verified" : "Buy Ticket"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!verified}
+                    onClick={() => setPlaced(true)}
+                    className={[
+                      "inline-flex h-12 w-full items-center justify-center rounded-2xl px-4 text-sm font-semibold ring-1 transition",
+                      verified
+                        ? "bg-emerald-600 text-white ring-emerald-600/20 hover:bg-emerald-500 active:scale-[0.99]"
+                        : "bg-slate-100 text-slate-400 ring-slate-200"
+                    ].join(" ")}
+                  >
+                    Proceed to checkout
+                  </button>
+                </div>
 
                 <AnimatePresence initial={false}>
                   {placed && verified ? (
@@ -190,49 +195,34 @@ function HomePageClient() {
                       animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
                       exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
                       transition={{ duration: 0.22, ease: "easeOut" }}
-                      className="rounded-[24px] bg-white/[0.04] px-4 py-3 text-sm text-white/80 ring-1 ring-white/10"
+                      className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
                     >
-                      Order placed (simulated). Thanks for testing the demo.
+                      Checkout unlocked and ticket purchase completed (simulated).
                     </motion.div>
                   ) : null}
                 </AnimatePresence>
               </div>
 
-              <p className="mt-3 text-center text-xs text-white/45">
-                Demo: checkout is simulated. Verification toggles via <span className="font-semibold">?verified=true</span>.
-              </p>
-            </motion.div>
-          </motion.div>
-        </div>
-      </div>
-    </main>
-  );
-}
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
+                <p className="font-semibold text-slate-800">Queue counter</p>
+                <p className="mt-1">This demo increments demand to simulate a real ticketing rush.</p>
+              </div>
+            </aside>
+          </section>
 
-function HomePageFallback() {
-  return (
-    <main className="min-h-dvh px-4 pb-10 pt-8">
-      <div className="mx-auto w-full max-w-[440px]">
-        <div className="relative overflow-hidden rounded-[30px] ring-1 ring-white/10">
-          <div className="absolute inset-0 bg-[radial-gradient(130%_100%_at_50%_0%,rgba(56,189,248,0.18)_0%,rgba(99,102,241,0.13)_30%,rgba(0,0,0,1)_78%)]" />
-          <div className="relative px-5 pb-6 pt-6">
-            <div className="h-6 w-40 rounded-xl bg-white/10" />
-            <div className="mt-4 h-10 w-full rounded-2xl bg-white/10" />
-            <div className="mt-6 h-28 w-full rounded-[28px] bg-white/[0.04] ring-1 ring-white/10" />
-            <div className="mt-3 h-24 w-full rounded-[28px] bg-white/[0.04] ring-1 ring-white/10" />
-            <div className="mt-5 h-12 w-full rounded-2xl bg-white/10 ring-1 ring-white/15" />
-          </div>
-        </div>
+          <p className="text-center text-xs text-slate-500">KineticAuth runs in an isolated overlay with its own theme and motion logic.</p>
+        </motion.div>
       </div>
-    </main>
-  );
-}
 
-export default function HomePage() {
-  return (
-    <Suspense fallback={<HomePageFallback />}>
-      <HomePageClient />
-    </Suspense>
+      <VerificationOverlay
+        open={overlayOpen}
+        onClose={() => setOverlayOpen(false)}
+        onVerified={() => {
+          setVerified(true);
+          setOverlayOpen(false);
+        }}
+      />
+    </main>
   );
 }
 

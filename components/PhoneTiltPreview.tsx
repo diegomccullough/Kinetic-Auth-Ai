@@ -6,6 +6,10 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
+const EXAGGERATION_MULTIPLIER = 2.0;
+const PERSPECTIVE_PX = 1200;
+const LERP_FACTOR = 0.08;
+
 type PhoneTiltPreviewProps = {
   beta: number;
   gamma: number;
@@ -43,7 +47,7 @@ export default function PhoneTiltPreview({ beta, gamma, factor = 0.38, reduceMot
 
     if (reduceMotion) {
       root.style.boxShadow = baseShadow;
-      phone.style.transform = "perspective(900px) rotateX(0deg) rotateY(0deg) translateZ(0px)";
+      phone.style.transform = `perspective(${PERSPECTIVE_PX}px) rotateX(0deg) rotateY(0deg) translateZ(0px)`;
       screenBg.style.transform = "translate3d(0px, 0px, 0) scale(1.04)";
       return;
     }
@@ -58,21 +62,21 @@ export default function PhoneTiltPreview({ beta, gamma, factor = 0.38, reduceMot
       const targetGamma = clamp(latest.current.gamma, -90, 90);
 
       // Smooth interpolation (avoid jitter).
-      smoothed.current.beta = smoothed.current.beta + (targetBeta - smoothed.current.beta) * 0.08;
-      smoothed.current.gamma = smoothed.current.gamma + (targetGamma - smoothed.current.gamma) * 0.08;
+      smoothed.current.beta = smoothed.current.beta + (targetBeta - smoothed.current.beta) * LERP_FACTOR;
+      smoothed.current.gamma = smoothed.current.gamma + (targetGamma - smoothed.current.gamma) * LERP_FACTOR;
 
       const b = smoothed.current.beta;
       const g = smoothed.current.gamma;
 
-      const rx = clamp(b * factor, -18, 18);
-      const ry = clamp(g * factor, -22, 22);
+      const rx = clamp(b * factor * EXAGGERATION_MULTIPLIER, -18, 18);
+      const ry = clamp(g * factor * EXAGGERATION_MULTIPLIER, -22, 22);
 
       // Parallax offsets for inner screen layers.
       const px = clamp(-g * 0.55, -18, 18);
       const py = clamp(-b * 0.35, -14, 14);
 
       const lift = 8;
-      phone.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) translateZ(${lift}px)`;
+      phone.style.transform = `perspective(${PERSPECTIVE_PX}px) rotateX(${rx}deg) rotateY(${ry}deg) translateZ(${lift}px)`;
 
       // Dynamic shadow: reacts to tilt.
       const sx = clamp(ry * 0.9, -18, 18);
