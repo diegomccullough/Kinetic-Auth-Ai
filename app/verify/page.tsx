@@ -13,7 +13,6 @@ function VerifyPageClient() {
     returnTo.includes("?") ? `${returnTo}&verified=true` : `${returnTo}?verified=true`;
 
   return (
-<<<<<<< HEAD
     <main className="min-h-dvh bg-surface px-4 py-4 sm:py-6">
       <div className="mx-auto max-w-verify">
         <div className="overflow-hidden rounded-2xl bg-surface-elevated shadow-lg sm:rounded-3xl">
@@ -31,16 +30,6 @@ function VerifyPageClient() {
         </div>
       </div>
     </main>
-=======
-    <VerificationWizard
-      onVerified={() => {
-        router.push("/?verified=true");
-      }}
-      onCancel={() => {
-        router.push("/");
-      }}
-    />
->>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
   );
 }
 
