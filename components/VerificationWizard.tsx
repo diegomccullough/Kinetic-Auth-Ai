@@ -389,11 +389,13 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
             key="intro"
             style={{
               width: "100vw",
-              height: "100vh",
+              height: "100dvh",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
+              padding: "40px 20px",
+              gap: 28,
               position: "relative",
               overflow: "hidden"
             }}
@@ -423,30 +425,41 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 fontWeight: 600,
                 letterSpacing: "-0.02em",
                 color: "#f1f5f9",
-                margin: "0 0 32px 0",
+                margin: 0,
                 textAlign: "center"
               }}
             >
               Live Motion Detection Preview
             </h1>
 
-            {/* PhoneTiltPreview hero */}
+            {/* PhoneTiltPreview — flexGrow centers it vertically */}
             <div
               style={{
                 position: "relative",
                 zIndex: 1,
-                width: 320,
-                height: 640,
-                flexShrink: 0
+                flexGrow: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: 0
               }}
             >
-              <PhoneTiltPreview
-                beta={granted ? smoothedBeta : 0}
-                gamma={granted ? smoothedGamma : 0}
-                reduceMotion={!granted || !!reduceMotion}
-                variant="cinematic"
-                showBadge
-              />
+              <div
+                style={{
+                  position: "relative",
+                  width: 320,
+                  height: 640,
+                  flexShrink: 0
+                }}
+              >
+                <PhoneTiltPreview
+                  beta={granted ? smoothedBeta : 0}
+                  gamma={granted ? smoothedGamma : 0}
+                  reduceMotion={!granted || !!reduceMotion}
+                  variant="cinematic"
+                  showBadge
+                />
+              </div>
             </div>
 
             {/* Subtitle */}
@@ -456,7 +469,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 zIndex: 1,
                 fontSize: 13,
                 color: "rgba(148,163,184,0.85)",
-                margin: "32px 0 0 0",
+                margin: 0,
                 textAlign: "center",
                 lineHeight: 1.55
               }}
@@ -469,8 +482,8 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
               style={{
                 position: "relative",
                 zIndex: 1,
-                marginTop: 28,
-                width: "min(320px, 90vw)"
+                width: "min(320px, 90vw)",
+                marginBottom: "calc(20px + env(safe-area-inset-bottom, 0px))"
               }}
             >
               {granted ? (

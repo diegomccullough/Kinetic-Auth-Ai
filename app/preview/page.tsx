@@ -23,29 +23,54 @@ export default function MotionPreviewPage() {
 
   const targetRef = useRef({ beta: 0, gamma: 0 });
   const smoothRef = useRef({ beta: 0, gamma: 0 });
+  const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
+  const calibrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef = useRef<number | null>(null);
 
   const [sensorValues, setSensorValues] = useState({ beta: 0, gamma: 0 });
+  const [calibrationComplete, setCalibrationComplete] = useState(false);
+
+  const CALIBRATION_DELAY_MS = 300;
 
   // Detect initial permission state on mount
   useEffect(() => {
     setPermissionState(detectInitialPermissionState());
   }, []);
 
-  // Attach deviceorientation listener when granted
+  // Reset calibration when permission is not granted (so re-grant triggers fresh calibration)
+  useEffect(() => {
+    if (permissionState !== "granted") {
+      baselineRef.current = null;
+      setCalibrationComplete(false);
+    }
+  }, [permissionState]);
+
+  // Attach deviceorientation listener when granted; capture baseline from first event only (after permission)
   useEffect(() => {
     if (permissionState !== "granted") return;
 
     const onOrientation = (e: DeviceOrientationEvent) => {
       if (typeof e.beta === "number") targetRef.current.beta = e.beta;
       if (typeof e.gamma === "number") targetRef.current.gamma = e.gamma;
+      if (baselineRef.current === null) {
+        baselineRef.current = { beta: targetRef.current.beta, gamma: targetRef.current.gamma };
+        calibrationTimeoutRef.current = window.setTimeout(() => {
+          setCalibrationComplete(true);
+        }, CALIBRATION_DELAY_MS);
+      }
     };
 
     window.addEventListener("deviceorientation", onOrientation, { passive: true });
-    return () => window.removeEventListener("deviceorientation", onOrientation);
+    return () => {
+      window.removeEventListener("deviceorientation", onOrientation);
+      if (calibrationTimeoutRef.current) {
+        window.clearTimeout(calibrationTimeoutRef.current);
+        calibrationTimeoutRef.current = null;
+      }
+    };
   }, [permissionState]);
 
-  // Lerp loop — pass raw sensor values to PhoneTiltPreview (tilt math is inside component)
+  // Pass values only after calibration: relative to baseline (dead zone, sensitivity, clamp, smoothing in PhoneTiltPreview)
   useEffect(() => {
     if (permissionState !== "granted") return;
 
@@ -57,9 +82,19 @@ export default function MotionPreviewPage() {
       last = t;
 
       const target = targetRef.current;
+      const base = baselineRef.current;
+
+      if (!calibrationComplete || base === null) {
+        setSensorValues({ beta: 0, gamma: 0 });
+        smoothRef.current = { beta: 0, gamma: 0 };
+        return;
+      }
+
+      const relBeta = target.beta - base.beta;
+      const relGamma = target.gamma - base.gamma;
       const s = smoothRef.current;
-      s.beta = s.beta + (target.beta - s.beta) * 0.1;
-      s.gamma = s.gamma + (target.gamma - s.gamma) * 0.1;
+      s.beta = s.beta + (relBeta - s.beta) * 0.1;
+      s.gamma = s.gamma + (relGamma - s.gamma) * 0.1;
 
       setSensorValues({
         beta: parseFloat(s.beta.toFixed(2)),
@@ -72,7 +107,7 @@ export default function MotionPreviewPage() {
       if (rafRef.current != null) window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [permissionState]);
+  }, [permissionState, calibrationComplete]);
 
   // iOS permission request
   const requestPermission = useCallback(async () => {
@@ -109,6 +144,8 @@ export default function MotionPreviewPage() {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
+        padding: "40px 20px",
+        gap: 28,
         background: "#0f172a",
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
         WebkitFontSmoothing: "antialiased",
@@ -138,23 +175,33 @@ export default function MotionPreviewPage() {
           fontWeight: 600,
           letterSpacing: "-0.02em",
           color: "#f1f5f9",
-          margin: "0 0 32px 0",
+          margin: 0,
           textAlign: "center"
         }}
       >
         Live Motion Detection Preview
       </h1>
 
-      {/* PhoneTiltPreview — responsive, no max-width constraint */}
+      {/* PhoneTiltPreview — flexGrow centers it vertically */}
       <div
         style={{
           position: "relative",
           zIndex: 1,
-          width: "min(80vw, 360px)",
-          aspectRatio: "1 / 1.9",
-          flexShrink: 0
+          flexGrow: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: 0
         }}
       >
+        <div
+          style={{
+            position: "relative",
+            width: "min(80vw, 360px)",
+            aspectRatio: "1 / 1.9",
+            flexShrink: 0
+          }}
+        >
         {permissionState === "needs_gesture" ? (
           // iOS gate: show tap-to-enable prompt over the phone shell
           <div
@@ -211,6 +258,7 @@ export default function MotionPreviewPage() {
             showBadge
           />
         )}
+        </div>
       </div>
 
       {/* Subtitle */}
@@ -220,13 +268,16 @@ export default function MotionPreviewPage() {
           zIndex: 1,
           fontSize: 13,
           color: "rgba(148,163,184,0.85)",
-          margin: "32px 0 0 0",
+          margin: 0,
           textAlign: "center",
           lineHeight: 1.55
         }}
       >
         Move your phone to see real-time orientation tracking.
       </p>
+
+      {/* Spacer for iOS safe area */}
+      <div style={{ height: "calc(20px + env(safe-area-inset-bottom, 0px))", flexShrink: 0 }} aria-hidden="true" />
     </main>
   );
 }
