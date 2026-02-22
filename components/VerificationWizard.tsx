@@ -1426,9 +1426,9 @@ export default function VerificationWizard({
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              justifyContent: "flex-start",
-              padding: "40px 20px",
-              gap: 28,
+              justifyContent: "center",
+              padding: "24px 20px",
+              gap: 16,
               position: "relative",
               overflow: "hidden"
             }}
@@ -1448,21 +1448,7 @@ export default function VerificationWizard({
               }}
             />
 
-            <h1
-              style={{
-                position: "relative",
-                zIndex: 1,
-                fontSize: "clamp(15px, 2.5vw, 20px)",
-                fontWeight: 600,
-                letterSpacing: "-0.02em",
-                color: "#f1f5f9",
-                margin: 0,
-                textAlign: "center"
-              }}
-            >
-              Live Motion Detection Preview
-            </h1>
-
+            {/* Phone visualization */}
             <div
               style={{
                 position: "relative",
@@ -1473,7 +1459,7 @@ export default function VerificationWizard({
                 justifyContent: "center",
               }}
             >
-              <div className="w-full max-w-[380px] mx-auto px-4">
+              <div className="w-full max-w-[260px] mx-auto">
                 <div className="relative w-full aspect-[9/19] mx-auto">
                   <PhoneTiltPreview
                     beta={granted ? smoothedBeta : 0}
@@ -1486,56 +1472,70 @@ export default function VerificationWizard({
               </div>
             </div>
 
-            <p
-              style={{
-                position: "relative",
-                zIndex: 1,
-                fontSize: 13,
-                color: "rgba(148,163,184,0.85)",
-                margin: 0,
-                textAlign: "center",
-                lineHeight: 1.55
-              }}
-            >
-              First tilt your phone (left, then right). Then tilt the ball into the circle. If the ball stays outside too long, you&apos;ll do a shake-to-the-beat test with the artist&apos;s music.
-            </p>
+            {/* Headline + subtitle */}
+            <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
+              <h1
+                style={{
+                  fontSize: 20,
+                  fontWeight: 700,
+                  letterSpacing: "-0.025em",
+                  color: "#f1f5f9",
+                  margin: 0,
+                }}
+              >
+                Verify You&apos;re Human
+              </h1>
+              <p
+                style={{
+                  marginTop: 4,
+                  fontSize: 13,
+                  color: "rgba(148,163,184,0.85)",
+                  lineHeight: 1.4,
+                }}
+              >
+                Tilt left and right to continue.
+              </p>
+            </div>
 
-            {/* Trust chip + Debug */}
+            {/* Trust chip */}
             <div style={{ position: "relative", zIndex: 1, width: "min(320px, 90vw)" }}>
               <TrustChip risk={risk} loading={riskLoading} />
             </div>
 
+            {/* Actions */}
             <div
               style={{
                 position: "relative",
                 zIndex: 1,
                 width: "min(320px, 90vw)",
-                marginBottom: "calc(20px + env(safe-area-inset-bottom, 0px))"
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
               }}
             >
-              <div style={{ marginBottom: 10 }}>
-                <VoiceGuidanceButton
-                  step="tilt"
-                  riskLevel={risk?.risk_level ?? "medium"}
-                  disabled={riskLoading}
-                  voiceLoading={voiceLoading}
-                  voiceText={voiceText}
-                  onNarrate={handleNarrate}
-                />
-              </div>
+              {/* Secondary: AI Voice Guidance */}
+              <VoiceGuidanceButton
+                step="tilt"
+                riskLevel={risk?.risk_level ?? "medium"}
+                disabled={riskLoading}
+                voiceLoading={voiceLoading}
+                voiceText={voiceText}
+                onNarrate={handleNarrate}
+              />
 
+              {/* Primary CTA */}
               {granted ? (
                 <motion.button
                   type="button"
                   onClick={advanceToTasks}
                   style={{
                     width: "100%",
-                    height: 52,
+                    height: 48,
                     borderRadius: 14,
                     background: "#1d4ed8",
                     color: "#fff",
                     fontSize: 15,
-                    fontWeight: 600,
+                    fontWeight: 700,
                     letterSpacing: "-0.01em",
                     border: "none",
                     cursor: "pointer"
@@ -1557,12 +1557,12 @@ export default function VerificationWizard({
                   }}
                   style={{
                     width: "100%",
-                    height: 52,
+                    height: 48,
                     borderRadius: 14,
                     background: "#1d4ed8",
                     color: "#fff",
                     fontSize: 15,
-                    fontWeight: 600,
+                    fontWeight: 700,
                     letterSpacing: "-0.01em",
                     border: "none",
                     cursor: "pointer"
@@ -1572,12 +1572,15 @@ export default function VerificationWizard({
                   Enable Motion Sensor
                 </motion.button>
               )}
+
+              {/* Privacy note */}
               <p
                 style={{
-                  marginTop: 10,
                   textAlign: "center",
                   fontSize: 11,
-                  color: "rgba(100,116,139,0.8)"
+                  color: "rgba(100,116,139,0.8)",
+                  margin: 0,
+                  paddingBottom: "env(safe-area-inset-bottom, 0px)",
                 }}
               >
                 {(!available || permissionState === "denied" || permissionState === "unsupported")
