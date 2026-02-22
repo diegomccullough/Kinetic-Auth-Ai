@@ -47,24 +47,31 @@ export default function MotionPreviewPage() {
     }
   }, [permissionState]);
 
-  // Attach deviceorientation listener when granted; capture baseline from first event only (after permission)
+  // Attach deviceorientation listener when granted; normalize for upright portrait, capture baseline from first event
   useEffect(() => {
     if (permissionState !== "granted") return;
 
-    const onOrientation = (e: DeviceOrientationEvent) => {
-      if (typeof e.beta === "number") targetRef.current.beta = e.beta;
-      if (typeof e.gamma === "number") targetRef.current.gamma = e.gamma;
+    const handleOrientation = (event: DeviceOrientationEvent) => {
+      const rawBeta = event.beta ?? 0;
+      const rawGamma = event.gamma ?? 0;
+      // Normalize for upright portrait hold
+      const beta = rawBeta - 90;
+      const gamma = rawGamma;
+
+      targetRef.current.beta = beta;
+      targetRef.current.gamma = gamma;
+
       if (baselineRef.current === null) {
-        baselineRef.current = { beta: targetRef.current.beta, gamma: targetRef.current.gamma };
+        baselineRef.current = { beta, gamma };
         calibrationTimeoutRef.current = window.setTimeout(() => {
           setCalibrationComplete(true);
         }, CALIBRATION_DELAY_MS);
       }
     };
 
-    window.addEventListener("deviceorientation", onOrientation, { passive: true });
+    window.addEventListener("deviceorientation", handleOrientation, { passive: true });
     return () => {
-      window.removeEventListener("deviceorientation", onOrientation);
+      window.removeEventListener("deviceorientation", handleOrientation);
       if (calibrationTimeoutRef.current) {
         window.clearTimeout(calibrationTimeoutRef.current);
         calibrationTimeoutRef.current = null;
