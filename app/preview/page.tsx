@@ -21,7 +21,7 @@ function detectInitialPermissionState(): PermissionState {
 export default function MotionPreviewPage() {
   const [permissionState, setPermissionState] = useState<PermissionState>("unknown");
 
-  const targetRef = useRef({ beta: 0, gamma: 0 });
+  const latestOrientation = useRef({ beta: 0, gamma: 0 });
   const smoothRef = useRef({ beta: 0, gamma: 0 });
   const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
   const calibrationTimeoutRef = useRef<
@@ -32,7 +32,8 @@ export default function MotionPreviewPage() {
   const [sensorValues, setSensorValues] = useState({ beta: 0, gamma: 0 });
   const [calibrationComplete, setCalibrationComplete] = useState(false);
 
-  const CALIBRATION_DELAY_MS = 300;
+  const CALIBRATION_DELAY_MS = 500;
+  const SMOOTHING = 0.3;
 
   // Detect initial permission state on mount
   useEffect(() => {
@@ -47,29 +48,26 @@ export default function MotionPreviewPage() {
     }
   }, [permissionState]);
 
-  // Attach deviceorientation listener when granted; normalize for upright portrait, capture baseline from first event
+  // Attach deviceorientation listener immediately after permission; only store raw beta/gamma (do NOT capture baseline here)
   useEffect(() => {
     if (permissionState !== "granted") return;
 
     const handleOrientation = (event: DeviceOrientationEvent) => {
-      const rawBeta = event.beta ?? 0;
-      const rawGamma = event.gamma ?? 0;
-      // Normalize for upright portrait hold
-      const beta = rawBeta - 90;
-      const gamma = rawGamma;
-
-      targetRef.current.beta = beta;
-      targetRef.current.gamma = gamma;
-
-      if (baselineRef.current === null) {
-        baselineRef.current = { beta, gamma };
-        calibrationTimeoutRef.current = window.setTimeout(() => {
-          setCalibrationComplete(true);
-        }, CALIBRATION_DELAY_MS);
-      }
+      latestOrientation.current.beta = event.beta ?? 0;
+      latestOrientation.current.gamma = event.gamma ?? 0;
     };
 
     window.addEventListener("deviceorientation", handleOrientation, { passive: true });
+
+    // After 500ms, capture baseline from latestOrientation at that moment; only then enable motion
+    calibrationTimeoutRef.current = window.setTimeout(() => {
+      baselineRef.current = {
+        beta: latestOrientation.current.beta,
+        gamma: latestOrientation.current.gamma
+      };
+      setCalibrationComplete(true);
+    }, CALIBRATION_DELAY_MS);
+
     return () => {
       window.removeEventListener("deviceorientation", handleOrientation);
       if (calibrationTimeoutRef.current) {
@@ -79,7 +77,7 @@ export default function MotionPreviewPage() {
     };
   }, [permissionState]);
 
-  // Pass values only after calibration: relative to baseline (dead zone, sensitivity, clamp, smoothing in PhoneTiltPreview)
+  // Apply motion only after baseline is set: relative to baseline, smoothing 0.3 (dead zone, sensitivity, clamp in PhoneTiltPreview)
   useEffect(() => {
     if (permissionState !== "granted") return;
 
@@ -90,7 +88,7 @@ export default function MotionPreviewPage() {
       if (t - last < 1000 / 60) return;
       last = t;
 
-      const target = targetRef.current;
+      const latest = latestOrientation.current;
       const base = baselineRef.current;
 
       if (!calibrationComplete || base === null) {
@@ -99,11 +97,11 @@ export default function MotionPreviewPage() {
         return;
       }
 
-      const relBeta = target.beta - base.beta;
-      const relGamma = target.gamma - base.gamma;
+      const relBeta = latest.beta - base.beta;
+      const relGamma = latest.gamma - base.gamma;
       const s = smoothRef.current;
-      s.beta = s.beta + (relBeta - s.beta) * 0.1;
-      s.gamma = s.gamma + (relGamma - s.gamma) * 0.1;
+      s.beta = s.beta + (relBeta - s.beta) * SMOOTHING;
+      s.gamma = s.gamma + (relGamma - s.gamma) * SMOOTHING;
 
       setSensorValues({
         beta: parseFloat(s.beta.toFixed(2)),
