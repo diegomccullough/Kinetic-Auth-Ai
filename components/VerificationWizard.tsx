@@ -8,6 +8,99 @@ import PhoneTiltPreview from "@/components/PhoneTiltPreview";
 import type { EventSong } from "@/lib/events";
 import { evaluateRisk } from "@/lib/riskClient";
 
+// ─── Accessibility Detection Hook ──────────────────────────────────────────────
+function useAccessibilityFeatures() {
+  const reduceMotion = useReducedMotion();
+  const [screenReaderActive, setScreenReaderActive] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [hasMotionSensor, setHasMotionSensor] = useState(true);
+
+  useEffect(() => {
+    // Detect desktop vs mobile
+    const checkDesktop = () => {
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      setIsDesktop(!isMobile);
+    };
+    checkDesktop();
+
+    // Check for motion sensor availability
+    const checkMotionSensor = () => {
+      if (typeof DeviceMotionEvent === "undefined") {
+        setHasMotionSensor(false);
+      } else if (typeof (DeviceMotionEvent as unknown as { requestPermission?: () => Promise<string> }).requestPermission === "function") {
+        // iOS - sensor exists but needs permission
+        setHasMotionSensor(true);
+      } else {
+        // Check if we actually get motion events
+        let received = false;
+        const handler = () => { received = true; };
+        window.addEventListener("devicemotion", handler, { once: true });
+        setTimeout(() => {
+          window.removeEventListener("devicemotion", handler);
+          if (!received) setHasMotionSensor(false);
+        }, 1000);
+      }
+    };
+    checkMotionSensor();
+
+    // Detect screen reader - check for common indicators
+    const checkScreenReader = () => {
+      // Check for aria-live regions being announced (indirect detection)
+      const hasReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // Screen readers often trigger reduced motion
+      // Also check for high contrast mode which often accompanies screen readers
+      const hasHighContrast = window.matchMedia("(prefers-contrast: more)").matches;
+      // Check for forced colors (Windows High Contrast Mode)
+      const hasForcedColors = window.matchMedia("(forced-colors: active)").matches;
+      
+      setScreenReaderActive(hasReducedMotion || hasHighContrast || hasForcedColors);
+    };
+    checkScreenReader();
+
+    // Listen for preference changes
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const contrastQuery = window.matchMedia("(prefers-contrast: more)");
+    
+    const updateAccessibility = () => checkScreenReader();
+    motionQuery.addEventListener("change", updateAccessibility);
+    contrastQuery.addEventListener("change", updateAccessibility);
+
+    return () => {
+      motionQuery.removeEventListener("change", updateAccessibility);
+      contrastQuery.removeEventListener("change", updateAccessibility);
+    };
+  }, []);
+
+  return {
+    reduceMotion: !!reduceMotion,
+    screenReaderActive,
+    isDesktop,
+    hasMotionSensor,
+    needsAlternativeTest: isDesktop || !hasMotionSensor,
+  };
+}
+
+// ─── Speech Synthesis Helper ───────────────────────────────────────────────────
+function speakInstruction(text: string) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  
+  // Cancel any ongoing speech
+  window.speechSynthesis.cancel();
+  
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.9;
+  utterance.pitch = 1;
+  utterance.volume = 1;
+  
+  // Try to use a natural voice
+  const voices = window.speechSynthesis.getVoices();
+  const preferredVoice = voices.find(v => v.lang.startsWith("en") && v.name.includes("Natural")) 
+    || voices.find(v => v.lang.startsWith("en"));
+  if (preferredVoice) utterance.voice = preferredVoice;
+  
+  window.speechSynthesis.speak(utterance);
+}
+
 // ─── AI Risk Types ────────────────────────────────────────────────────────────
 type RiskLevel = "low" | "medium" | "high";
 type StepUp = "none" | "tilt" | "beat";
@@ -201,7 +294,13 @@ const SHAKE_COOLDOWN_MS = 400;
 /** Number of beats the user must hit to pass the beat challenge */
 const BEATS_REQUIRED = 10;
 
-type Screen = "intro" | "tasks" | "analyzing" | "step_up_overview" | "beat" | "result";
+/** Seconds before multi-drag challenge triggers if user doesn't drag */
+const DRAG_TIMEOUT_SECONDS = 10;
+
+/** Number of tickets to drag in multi-drag challenge */
+const MULTI_DRAG_REQUIRED = 5;
+
+type Screen = "intro" | "tasks" | "analyzing" | "step_up_overview" | "beat" | "drag" | "multi_drag" | "result";
 type TaskId = "left" | "right" | "steady";
 
 function ringDashOffset(radius: number, pct: number) {
@@ -837,6 +936,453 @@ function BeatChallenge({
   );
 }
 
+// ─── Drag Challenge (alternative for desktop/accessibility) ────────────────────
+function DragChallenge({
+  onPass,
+  onTimeout,
+  reduceMotion,
+  accessibilityMode,
+}: {
+  onPass: () => void;
+  onTimeout: () => void;
+  reduceMotion: boolean | null;
+  accessibilityMode: boolean;
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [ticketPos, setTicketPos] = useState({ x: 0, y: 0 });
+  const [isDropped, setIsDropped] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(DRAG_TIMEOUT_SECONDS);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const ticketRef = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const hasStartedRef = useRef(false);
+
+  // Speak instructions for accessibility
+  useEffect(() => {
+    if (accessibilityMode) {
+      speakInstruction("Drag and drop verification. Drag the ticket to the stage area to verify you are human. You have 10 seconds.");
+    }
+  }, [accessibilityMode]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (isDropped) return;
+    
+    const interval = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t <= 1) {
+          clearInterval(interval);
+          if (!hasStartedRef.current) {
+            onTimeout();
+          }
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isDropped, onTimeout]);
+
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    hasStartedRef.current = true;
+    setIsDragging(true);
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    dragStartRef.current = { x: clientX - ticketPos.x, y: clientY - ticketPos.y };
+  };
+
+  const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!isDragging) return;
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    setTicketPos({
+      x: clientX - dragStartRef.current.x,
+      y: clientY - dragStartRef.current.y,
+    });
+  }, [isDragging]);
+
+  const handleDragEnd = useCallback(() => {
+    if (!isDragging) return;
+    setIsDragging(false);
+
+    // Check if ticket is over the stage
+    const container = containerRef.current;
+    const ticket = ticketRef.current;
+    if (!container || !ticket) return;
+
+    const stageEl = container.querySelector("[data-stage]");
+    if (!stageEl) return;
+
+    const stageRect = stageEl.getBoundingClientRect();
+    const ticketRect = ticket.getBoundingClientRect();
+    const ticketCenter = {
+      x: ticketRect.left + ticketRect.width / 2,
+      y: ticketRect.top + ticketRect.height / 2,
+    };
+
+    const isOverStage =
+      ticketCenter.x >= stageRect.left &&
+      ticketCenter.x <= stageRect.right &&
+      ticketCenter.y >= stageRect.top &&
+      ticketCenter.y <= stageRect.bottom;
+
+    if (isOverStage) {
+      setIsDropped(true);
+      vibrate([20, 10, 20]);
+      if (accessibilityMode) {
+        speakInstruction("Ticket dropped successfully. Verification complete.");
+      }
+      setTimeout(onPass, 800);
+    }
+  }, [isDragging, onPass, accessibilityMode]);
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener("mousemove", handleDragMove);
+      window.addEventListener("mouseup", handleDragEnd);
+      window.addEventListener("touchmove", handleDragMove, { passive: false });
+      window.addEventListener("touchend", handleDragEnd);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleDragMove);
+      window.removeEventListener("mouseup", handleDragEnd);
+      window.removeEventListener("touchmove", handleDragMove);
+      window.removeEventListener("touchend", handleDragEnd);
+    };
+  }, [isDragging, handleDragMove, handleDragEnd]);
+
+  return (
+    <motion.section
+      key="drag"
+      className="min-h-dvh flex flex-col items-center justify-center px-6 py-10"
+      style={{ background: "#0f172a" }}
+      initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
+      transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
+    >
+      <div ref={containerRef} className="w-full max-w-[380px] flex flex-col items-center gap-6">
+        {/* Header */}
+        <div className="text-center">
+          <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500 mb-2">KINETICAUTH · DRAG TEST</p>
+          <h2 className="text-xl font-bold text-white">Drag the Ticket</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Drag the ticket onto the stage to verify
+          </p>
+        </div>
+
+        {/* Timer */}
+        <div className={`rounded-full px-4 py-1.5 text-sm font-semibold ${timeLeft <= 3 ? "bg-red-900/50 text-red-300" : "bg-slate-800 text-slate-300"}`}>
+          {timeLeft}s remaining
+        </div>
+
+        {/* Stage area */}
+        <div
+          data-stage
+          className={`relative w-full h-40 rounded-2xl border-2 border-dashed transition-colors ${
+            isDropped
+              ? "border-emerald-500 bg-emerald-900/20"
+              : isDragging
+              ? "border-blue-400 bg-blue-900/20"
+              : "border-slate-600 bg-slate-800/30"
+          }`}
+        >
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-2 opacity-40">
+              <rect x="4" y="20" width="40" height="24" rx="2" stroke="currentColor" strokeWidth="2" className="text-slate-500" />
+              <path d="M4 28h40" stroke="currentColor" strokeWidth="2" className="text-slate-500" />
+              <circle cx="24" cy="12" r="8" stroke="currentColor" strokeWidth="2" className="text-slate-500" />
+            </svg>
+            <p className="text-sm text-slate-500">
+              {isDropped ? "✓ Ticket placed!" : "Drop ticket here"}
+            </p>
+          </div>
+        </div>
+
+        {/* Draggable ticket */}
+        {!isDropped && (
+          <div
+            ref={ticketRef}
+            onMouseDown={handleDragStart}
+            onTouchStart={handleDragStart}
+            className={`absolute cursor-grab active:cursor-grabbing select-none ${isDragging ? "z-50" : "z-10"}`}
+            style={{
+              transform: `translate(${ticketPos.x}px, ${ticketPos.y}px)`,
+              touchAction: "none",
+            }}
+          >
+            <motion.div
+              className="w-32 h-20 rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 shadow-lg border border-blue-500/30 flex flex-col items-center justify-center"
+              animate={{ scale: isDragging ? 1.1 : 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="mb-1">
+                <rect x="3" y="5" width="18" height="14" rx="2" stroke="white" strokeWidth="1.5" />
+                <path d="M3 10h18" stroke="white" strokeWidth="1.5" />
+                <circle cx="7" cy="15" r="1.5" fill="white" />
+              </svg>
+              <p className="text-xs font-semibold text-white">TICKET</p>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Instructions */}
+        <p className="text-center text-xs text-slate-500 leading-relaxed">
+          {accessibilityMode && "Accessibility mode active · "}
+          Click and drag the ticket to the stage area above
+        </p>
+      </div>
+    </motion.section>
+  );
+}
+
+// ─── Multi-Drag Challenge (with music) ─────────────────────────────────────────
+function MultiDragChallenge({
+  song,
+  onPass,
+  onSkip,
+  reduceMotion,
+  accessibilityMode,
+}: {
+  song: EventSong;
+  onPass: () => void;
+  onSkip: () => void;
+  reduceMotion: boolean | null;
+  accessibilityMode: boolean;
+}) {
+  const [ticketsPlaced, setTicketsPlaced] = useState(0);
+  const [currentTicketPos, setCurrentTicketPos] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const ticketRef = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Play music and speak instructions
+  useEffect(() => {
+    if (accessibilityMode) {
+      speakInstruction(`Multi-drag challenge. Drag ${MULTI_DRAG_REQUIRED} tickets to the stage while music plays. ${song.artist} is now playing.`);
+    }
+
+    // Play music
+    if (song.audioSrc) {
+      const audio = new Audio(song.audioSrc);
+      audioRef.current = audio;
+      audio.volume = 0.7;
+      audio.loop = true;
+      audio.play().catch(() => {});
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+        audioRef.current = null;
+      }
+    };
+  }, [song, accessibilityMode]);
+
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    setIsDragging(true);
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    dragStartRef.current = { x: clientX - currentTicketPos.x, y: clientY - currentTicketPos.y };
+  };
+
+  const handleDragMove = useCallback((e: MouseEvent | TouchEvent) => {
+    if (!isDragging) return;
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    setCurrentTicketPos({
+      x: clientX - dragStartRef.current.x,
+      y: clientY - dragStartRef.current.y,
+    });
+  }, [isDragging]);
+
+  const handleDragEnd = useCallback(() => {
+    if (!isDragging) return;
+    setIsDragging(false);
+
+    const container = containerRef.current;
+    const ticket = ticketRef.current;
+    if (!container || !ticket) return;
+
+    const stageEl = container.querySelector("[data-stage]");
+    if (!stageEl) return;
+
+    const stageRect = stageEl.getBoundingClientRect();
+    const ticketRect = ticket.getBoundingClientRect();
+    const ticketCenter = {
+      x: ticketRect.left + ticketRect.width / 2,
+      y: ticketRect.top + ticketRect.height / 2,
+    };
+
+    const isOverStage =
+      ticketCenter.x >= stageRect.left &&
+      ticketCenter.x <= stageRect.right &&
+      ticketCenter.y >= stageRect.top &&
+      ticketCenter.y <= stageRect.bottom;
+
+    if (isOverStage) {
+      vibrate([15, 10, 15]);
+      const newCount = ticketsPlaced + 1;
+      setTicketsPlaced(newCount);
+      setCurrentTicketPos({ x: 0, y: 0 });
+
+      if (newCount >= MULTI_DRAG_REQUIRED) {
+        if (accessibilityMode) {
+          speakInstruction("All tickets placed. Verification complete.");
+        }
+        setTimeout(onPass, 600);
+      } else if (accessibilityMode) {
+        speakInstruction(`Ticket ${newCount} placed. ${MULTI_DRAG_REQUIRED - newCount} remaining.`);
+      }
+    } else {
+      // Reset position if not dropped on stage
+      setCurrentTicketPos({ x: 0, y: 0 });
+    }
+  }, [isDragging, ticketsPlaced, onPass, accessibilityMode]);
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener("mousemove", handleDragMove);
+      window.addEventListener("mouseup", handleDragEnd);
+      window.addEventListener("touchmove", handleDragMove, { passive: false });
+      window.addEventListener("touchend", handleDragEnd);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleDragMove);
+      window.removeEventListener("mouseup", handleDragEnd);
+      window.removeEventListener("touchmove", handleDragMove);
+      window.removeEventListener("touchend", handleDragEnd);
+    };
+  }, [isDragging, handleDragMove, handleDragEnd]);
+
+  const progressPct = (ticketsPlaced / MULTI_DRAG_REQUIRED) * 100;
+
+  return (
+    <motion.section
+      key="multi-drag"
+      className="min-h-dvh flex flex-col items-center justify-center px-6 py-10"
+      style={{ background: "#0f172a" }}
+      initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
+      transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
+    >
+      <div ref={containerRef} className="w-full max-w-[380px] flex flex-col items-center gap-6">
+        {/* Header */}
+        <div className="text-center">
+          <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500 mb-2">KINETICAUTH · MULTI-DRAG</p>
+          <h2 className="text-xl font-bold text-white">Place All Tickets</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Drag each ticket to the stage while the music plays
+          </p>
+        </div>
+
+        {/* Song info */}
+        <div className="w-full rounded-2xl border border-slate-700/60 bg-slate-800/50 px-4 py-3 flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600/20 ring-1 ring-blue-500/30">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M6 3v8M10 1v10M2 5v4M14 4v6" stroke="#60a5fa" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white truncate">{song.title}</p>
+            <p className="text-xs text-slate-400 truncate">{song.artist}</p>
+          </div>
+          <div className="ml-auto shrink-0">
+            <span className="rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-700/40">
+              ♪ PLAYING
+            </span>
+          </div>
+        </div>
+
+        {/* Stage area with placed tickets */}
+        <div
+          data-stage
+          className={`relative w-full h-44 rounded-2xl border-2 border-dashed transition-colors ${
+            isDragging ? "border-blue-400 bg-blue-900/20" : "border-slate-600 bg-slate-800/30"
+          }`}
+        >
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-2 opacity-40">
+              <rect x="4" y="20" width="40" height="24" rx="2" stroke="currentColor" strokeWidth="2" className="text-slate-500" />
+              <path d="M4 28h40" stroke="currentColor" strokeWidth="2" className="text-slate-500" />
+              <circle cx="24" cy="12" r="8" stroke="currentColor" strokeWidth="2" className="text-slate-500" />
+            </svg>
+            <p className="text-sm text-slate-500">Drop tickets here</p>
+          </div>
+          
+          {/* Placed tickets visualization */}
+          <div className="absolute bottom-2 left-2 right-2 flex justify-center gap-1">
+            {Array.from({ length: ticketsPlaced }).map((_, i) => (
+              <motion.div
+                key={i}
+                className="w-8 h-5 rounded bg-emerald-600/80 border border-emerald-500/50"
+                initial={{ scale: 0, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Draggable ticket */}
+        {ticketsPlaced < MULTI_DRAG_REQUIRED && (
+          <div
+            ref={ticketRef}
+            onMouseDown={handleDragStart}
+            onTouchStart={handleDragStart}
+            className={`cursor-grab active:cursor-grabbing select-none ${isDragging ? "z-50 fixed" : ""}`}
+            style={{
+              transform: isDragging ? `translate(${currentTicketPos.x}px, ${currentTicketPos.y}px)` : undefined,
+              touchAction: "none",
+            }}
+          >
+            <motion.div
+              className="w-28 h-16 rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 shadow-lg border border-blue-500/30 flex flex-col items-center justify-center"
+              animate={{ scale: isDragging ? 1.1 : 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="mb-0.5">
+                <rect x="3" y="5" width="18" height="14" rx="2" stroke="white" strokeWidth="1.5" />
+                <path d="M3 10h18" stroke="white" strokeWidth="1.5" />
+              </svg>
+              <p className="text-[10px] font-semibold text-white">TICKET #{ticketsPlaced + 1}</p>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Progress */}
+        <div className="w-full space-y-1.5">
+          <div className="flex justify-between text-[11px] text-slate-500">
+            <span>Tickets placed</span>
+            <span>{ticketsPlaced} / {MULTI_DRAG_REQUIRED}</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+            <motion.div
+              className="h-full rounded-full bg-emerald-500"
+              animate={{ width: `${progressPct}%` }}
+              transition={{ type: "spring", stiffness: 240, damping: 28 }}
+            />
+          </div>
+        </div>
+
+        {/* Skip link */}
+        <button
+          type="button"
+          onClick={onSkip}
+          className="text-xs text-slate-600 hover:text-slate-400 transition underline underline-offset-2"
+        >
+          Skip challenge (manual review may apply)
+        </button>
+      </div>
+    </motion.section>
+  );
+}
+
 // ─── Tilt Challenge (owns the full left → right → steady sequence) ───────────
 type TiltAccumulatedData = {
   motionSamples: MotionSample[];
@@ -1234,12 +1780,17 @@ export default function VerificationWizard({
   const reduceMotion = useReducedMotion();
   const { smoothedBeta, smoothedGamma, smoothedRef, available, permissionState, requestPermission } =
     useDeviceOrientation();
+  
+  // ── Accessibility detection ────────────────────────────────────────────────
+  const accessibility = useAccessibilityFeatures();
+  const [dragSong, setDragSong] = useState<EventSong | null>(null);
 
   // ── Verification state machine (AI) ────────────────────────────────────────
   const [risk, setRisk] = useState<RiskResult | null>(null);
   const [riskLoading, setRiskLoading] = useState(true);
   const [tiltFailCount, setTiltFailCount] = useState(0);
   const tiltFailCountRef = useRef(0);
+  const [highTraffic] = useState(() => Math.random() > 0.7); // Simulate high traffic 30% of time
   const [trace, setTrace] = useState<VerificationTrace>({
     lastRiskRequest: null,
     lastRiskResponse: null,
@@ -1473,6 +2024,31 @@ export default function VerificationWizard({
               </div>
             </div>
 
+            {/* Accessibility indicator */}
+            {(accessibility.screenReaderActive || accessibility.reduceMotion) && (
+              <div
+                style={{
+                  position: "relative",
+                  zIndex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 14px",
+                  borderRadius: 12,
+                  background: "rgba(59, 130, 246, 0.15)",
+                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <circle cx="12" cy="4" r="2" fill="#60a5fa" />
+                  <path d="M12 6v4M8 14l4-4 4 4M8 14v4M16 14v4" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span style={{ fontSize: 12, color: "#93c5fd", fontWeight: 500 }}>
+                  Accessibility features detected
+                </span>
+              </div>
+            )}
+
             {/* Headline + subtitle */}
             <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
               <h1
@@ -1494,7 +2070,9 @@ export default function VerificationWizard({
                   lineHeight: 1.4,
                 }}
               >
-                Tilt left and right to continue.
+                {accessibility.needsAlternativeTest
+                  ? "Complete a quick drag-and-drop test to continue."
+                  : "Tilt left and right to continue."}
               </p>
             </div>
 
@@ -1514,8 +2092,34 @@ export default function VerificationWizard({
                 gap: 8,
               }}
             >
-              {/* Primary CTA */}
-              {granted ? (
+              {/* Primary CTA - Motion test or Drag test based on device capability */}
+              {accessibility.needsAlternativeTest ? (
+                <motion.button
+                  type="button"
+                  onClick={() => {
+                    if (accessibility.screenReaderActive) {
+                      speakInstruction("Starting drag and drop verification test.");
+                    }
+                    setScreen("drag");
+                    setCurrentStep("tilt");
+                  }}
+                  style={{
+                    width: "100%",
+                    height: 48,
+                    borderRadius: 14,
+                    background: "#1d4ed8",
+                    color: "#fff",
+                    fontSize: 15,
+                    fontWeight: 700,
+                    letterSpacing: "-0.01em",
+                    border: "none",
+                    cursor: "pointer"
+                  }}
+                  whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+                >
+                  Start Drag Test
+                </motion.button>
+              ) : granted ? (
                 <motion.button
                   type="button"
                   onClick={advanceToTasks}
@@ -1562,6 +2166,34 @@ export default function VerificationWizard({
                 >
                   Enable Motion Sensor
                 </motion.button>
+              )}
+
+              {/* Alternative test option for mobile users */}
+              {!accessibility.needsAlternativeTest && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (accessibility.screenReaderActive) {
+                      speakInstruction("Switching to drag and drop test.");
+                    }
+                    setScreen("drag");
+                    setCurrentStep("tilt");
+                  }}
+                  style={{
+                    width: "100%",
+                    height: 44,
+                    borderRadius: 14,
+                    background: "rgba(30, 41, 59, 0.8)",
+                    color: "rgba(148,163,184,0.9)",
+                    fontSize: 14,
+                    fontWeight: 500,
+                    border: "1px solid rgba(71,85,105,0.5)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  Use Drag Test Instead
+                </button>
               )}
 
               {/* Skip verification button */}
@@ -1654,6 +2286,75 @@ export default function VerificationWizard({
           ) : (
             <BeatPlaceholder key="beat-placeholder" onComplete={handleBeatPass} />
           )
+        ) : null}
+
+        {/* ═══════════════════════════════════════════════════════════
+            SCREEN 2e — DRAG CHALLENGE (alternative for desktop/accessibility)
+        ═══════════════════════════════════════════════════════════ */}
+        {screen === "drag" ? (
+          <DragChallenge
+            key="drag"
+            onPass={() => {
+              const score = scoreHumanConfidence({
+                motionSamples: [],
+                directedTimings: undefined,
+                stabilityPct: 100,
+                stabilityHoldPct: 100,
+              });
+              finish(score);
+            }}
+            onTimeout={() => {
+              // Trigger multi-drag challenge with music
+              const song = songs && songs.length > 0
+                ? songs[Math.floor(Math.random() * songs.length)]
+                : null;
+              if (song || highTraffic) {
+                setDragSong(song || { title: "Verification Track", artist: "System", bpm: 120, youtubeId: "" });
+                setScreen("multi_drag");
+              } else {
+                // No songs available, just pass
+                const score = scoreHumanConfidence({
+                  motionSamples: [],
+                  directedTimings: undefined,
+                  stabilityPct: 80,
+                  stabilityHoldPct: 80,
+                });
+                finish(score);
+              }
+            }}
+            reduceMotion={reduceMotion}
+            accessibilityMode={accessibility.screenReaderActive}
+          />
+        ) : null}
+
+        {/* ═══════════════════════════════════════════════════════════
+            SCREEN 2f — MULTI-DRAG CHALLENGE (with music)
+        ═══════════════════════════════════════════════════════════ */}
+        {screen === "multi_drag" && dragSong ? (
+          <MultiDragChallenge
+            key="multi-drag"
+            song={dragSong}
+            onPass={() => {
+              const score = scoreHumanConfidence({
+                motionSamples: [],
+                directedTimings: undefined,
+                stabilityPct: 100,
+                stabilityHoldPct: 100,
+              });
+              finish(score);
+            }}
+            onSkip={() => {
+              const score = scoreHumanConfidence({
+                motionSamples: [],
+                directedTimings: undefined,
+                stabilityPct: 60,
+                stabilityHoldPct: 60,
+              });
+              finish(score);
+            }}
+            reduceMotion={reduceMotion}
+            accessibilityMode={accessibility.screenReaderActive}
+          />
         ) : null}
 
         {/* ═══════════════════════════════════════════════════════════
