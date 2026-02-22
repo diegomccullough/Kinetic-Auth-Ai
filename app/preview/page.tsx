@@ -23,29 +23,41 @@ export default function MotionPreviewPage() {
 
   const latestOrientation = useRef({ beta: 0, gamma: 0 });
   const smoothRef = useRef({ beta: 0, gamma: 0 });
+  const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
+  const animateToZeroUntilRef = useRef<number>(0);
+  const stableLowTiltSinceRef = useRef<number | null>(null);
+  const lastTapRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
 
   const [sensorValues, setSensorValues] = useState({ beta: 0, gamma: 0 });
+  const [toast, setToast] = useState<string | null>(null);
 
   const SENSITIVITY = 1.8;
-  const SMOOTHING = 0.2;
+  const SMOOTHING = 0.25;
   const CLAMP_DEG = 45;
   const DEAD_ZONE_DEG = 2;
+  const RECAL_ANIM_MS = 300;
+  const SOFT_STAB_THRESHOLD_DEG = 2;
+  const SOFT_STAB_DURATION_MS = 1500;
+  const SOFT_STAB_NUDGE = 0.02;
 
   // Detect initial permission state on mount
   useEffect(() => {
     setPermissionState(detectInitialPermissionState());
   }, []);
 
-  // Reset smooth state when permission is revoked so the phone resets to flat
+  // Reset smooth state and baseline when permission is revoked
   useEffect(() => {
     if (permissionState !== "granted") {
       smoothRef.current = { beta: 0, gamma: 0 };
+      baselineRef.current = null;
+      animateToZeroUntilRef.current = 0;
+      stableLowTiltSinceRef.current = null;
       setSensorValues({ beta: 0, gamma: 0 });
     }
   }, [permissionState]);
 
-  // Attach deviceorientation listener; read raw beta/gamma directly, no baseline subtraction
+  // Attach deviceorientation listener
   useEffect(() => {
     if (permissionState !== "granted") return;
 
@@ -60,25 +72,71 @@ export default function MotionPreviewPage() {
     };
   }, [permissionState]);
 
-  // Visual stabilization: start at 0,0 and lerp toward raw sensor values scaled/clamped
+  // Double-tap recalibration (no navigation)
+  const handlePreviewPointerDown = useCallback(() => {
+    if (permissionState !== "granted") return;
+    const now = Date.now();
+    if (now - lastTapRef.current < 400) {
+      lastTapRef.current = 0;
+      const raw = latestOrientation.current;
+      baselineRef.current = { beta: raw.beta, gamma: raw.gamma };
+      animateToZeroUntilRef.current = now + RECAL_ANIM_MS;
+      stableLowTiltSinceRef.current = null;
+      setToast("Orientation recalibrated");
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
+    lastTapRef.current = now;
+  }, [permissionState]);
+
+  // Visual stabilization + recalibration animation + soft stabilization
   useEffect(() => {
     if (permissionState !== "granted") return;
 
-    // Immediately reset smooth state so phone visually starts flat
     smoothRef.current = { beta: 0, gamma: 0 };
 
     let last = 0;
-
     const deadZone = (v: number) => (Math.abs(v) < DEAD_ZONE_DEG ? 0 : v);
 
     const tick = (t: number) => {
       rafRef.current = window.requestAnimationFrame(tick);
       if (t - last < 1000 / 60) return;
       last = t;
-
+      const now = Date.now();
       const raw = latestOrientation.current;
-      const targetBeta = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(raw.beta) * SENSITIVITY));
-      const targetGamma = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(raw.gamma) * SENSITIVITY));
+      const base = baselineRef.current;
+
+      // Recalibration: animate display to 0 over ~300ms
+      if (animateToZeroUntilRef.current > 0) {
+        const s = smoothRef.current;
+        s.beta += (0 - s.beta) * 0.25;
+        s.gamma += (0 - s.gamma) * 0.25;
+        setSensorValues({ beta: parseFloat(s.beta.toFixed(2)), gamma: parseFloat(s.gamma.toFixed(2)) });
+        if (now >= animateToZeroUntilRef.current) {
+          animateToZeroUntilRef.current = 0;
+          smoothRef.current = { beta: 0, gamma: 0 };
+          setSensorValues({ beta: 0, gamma: 0 });
+        }
+        return;
+      }
+
+      // Relative to baseline when set
+      const relBeta = base ? raw.beta - base.beta : raw.beta;
+      const relGamma = base ? raw.gamma - base.gamma : raw.gamma;
+      let targetBeta = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(relBeta) * SENSITIVITY));
+      let targetGamma = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(relGamma) * SENSITIVITY));
+
+      // Soft stabilization: if tilt magnitude < 2° for 1500ms, nudge baseline toward current
+      const mag = Math.hypot(targetBeta, targetGamma);
+      if (mag < SOFT_STAB_THRESHOLD_DEG && base) {
+        if (stableLowTiltSinceRef.current === null) stableLowTiltSinceRef.current = now;
+        else if (now - stableLowTiltSinceRef.current >= SOFT_STAB_DURATION_MS) {
+          base.beta += (raw.beta - base.beta) * SOFT_STAB_NUDGE;
+          base.gamma += (raw.gamma - base.gamma) * SOFT_STAB_NUDGE;
+        }
+      } else {
+        stableLowTiltSinceRef.current = null;
+      }
 
       const s = smoothRef.current;
       s.beta += (targetBeta - s.beta) * SMOOTHING;
@@ -170,25 +228,48 @@ export default function MotionPreviewPage() {
         Live Motion Detection Preview
       </h1>
 
-      {/* PhoneTiltPreview — flexGrow centers it vertically */}
+      {/* Motion status — only when permission granted */}
+      {granted && (
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            fontSize: 12,
+            color: "rgba(34,211,238,0.9)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6
+          }}
+        >
+          <span aria-hidden>🟢</span>
+          <span>Motion Active</span>
+        </div>
+      )}
+
+      {/* PhoneTiltPreview — flexGrow centers it vertically; double-tap area for recalibration */}
       <div
         style={{
           position: "relative",
           zIndex: 1,
           flexGrow: 1,
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           minHeight: 0
         }}
       >
         <div
+          role="region"
+          aria-label="Motion preview"
           style={{
             position: "relative",
             width: "min(80vw, 360px)",
             aspectRatio: "1 / 1.9",
-            flexShrink: 0
+            flexShrink: 0,
+            touchAction: "manipulation"
           }}
+          onPointerDown={handlePreviewPointerDown}
         >
         {permissionState === "needs_gesture" ? (
           // iOS gate: show tap-to-enable prompt over the phone shell
@@ -247,7 +328,44 @@ export default function MotionPreviewPage() {
           />
         )}
         </div>
+        {/* Live tilt debug — X-axis rotation (rotateX) */}
+        {granted && (
+          <p
+            style={{
+              margin: "8px 0 0",
+              fontSize: 11,
+              color: "rgba(148,163,184,0.5)",
+              fontVariantNumeric: "tabular-nums"
+            }}
+          >
+            Tilt: {Math.round(-sensorValues.beta)}°
+          </p>
+        )}
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            bottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 10,
+            padding: "8px 14px",
+            borderRadius: 8,
+            background: "rgba(15,23,42,0.92)",
+            border: "1px solid rgba(34,211,238,0.25)",
+            color: "rgba(226,232,240,0.95)",
+            fontSize: 12,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.3)"
+          }}
+        >
+          {toast}
+        </div>
+      )}
 
       {/* Subtitle */}
       <p
