@@ -33,13 +33,10 @@ function VerifyPageClient() {
 
   return (
     <VerificationWizard
-<<<<<<< HEAD
       returnTo={returnTo}
       songs={songs}
       highTraffic={highTraffic}
       ticketQty={qty}
-=======
->>>>>>> d37327fe4cdd1b740b52de516eed4fd03ec474ed
       onVerified={() => {
         router.push(verifiedUrl);
       }}
