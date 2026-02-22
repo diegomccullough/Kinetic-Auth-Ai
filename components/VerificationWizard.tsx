@@ -6,6 +6,222 @@ import { scoreHumanConfidence, type MotionSample, type ScoreBreakdown } from "@/
 import { useDeviceOrientation } from "@/lib/useDeviceOrientation";
 import PhoneTiltPreview from "@/components/PhoneTiltPreview";
 import type { EventSong } from "@/lib/events";
+import { evaluateRisk } from "@/lib/riskClient";
+import { narrate } from "@/lib/narrateClient";
+
+// ─── AI Risk Types ────────────────────────────────────────────────────────────
+type RiskLevel = "low" | "medium" | "high";
+type StepUp = "none" | "tilt" | "beat";
+
+type RiskResult = {
+  risk_level: RiskLevel;
+  reason: string;
+  step_up: StepUp;
+};
+
+export type VerificationTrace = {
+  lastRiskRequest: Record<string, unknown> | null;
+  lastRiskResponse: RiskResult | null;
+  lastNarratePayload: Record<string, unknown> | null;
+  lastNarrateResult: string | null;
+  updatedAt: string | null;
+};
+
+const RISK_DEFAULT: RiskResult = {
+  risk_level: "medium",
+  reason: "Fallback (risk engine unavailable).",
+  step_up: "tilt",
+};
+
+const RISK_COLOR: Record<RiskLevel, string> = {
+  low: "#34d399",
+  medium: "#fbbf24",
+  high: "#f87171",
+};
+
+const DEMO_RISK_PAYLOAD = {
+  traffic_load: 0.85,
+  motion_entropy_score: 0.25,
+  interaction_latency_variance: 0.30,
+  tilt_fail_count: 0,
+  device_type: "mobile",
+} as const;
+
+// ─── Trust chip (compact) ─────────────────────────────────────────────────────
+function TrustChip({
+  risk,
+  loading,
+  onDebugClick,
+}: {
+  risk: RiskResult | null;
+  loading: boolean;
+  onDebugClick: () => void;
+}) {
+  const label = risk ? risk.risk_level.charAt(0).toUpperCase() + risk.risk_level.slice(1) : "…";
+  const color = risk ? RISK_COLOR[risk.risk_level] : "#475569";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#94a3b8" }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: loading ? "#475569" : color, flexShrink: 0 }} />
+        Trust: {loading ? "…" : label}
+      </span>
+      <button
+        type="button"
+        onClick={onDebugClick}
+        style={{
+          fontSize: 10, color: "#64748b", background: "none", border: "none", cursor: "pointer",
+          textDecoration: "underline", padding: 0,
+        }}
+      >
+        Debug
+      </button>
+    </div>
+  );
+}
+
+// ─── Debug Drawer ─────────────────────────────────────────────────────────────
+function DebugDrawer({
+  currentStep,
+  tiltFailCount,
+  risk,
+  trace,
+  open,
+  onOpen,
+  onClose,
+}: {
+  currentStep: string;
+  tiltFailCount: number;
+  risk: RiskResult | null;
+  trace: VerificationTrace;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+}) {
+  const r = risk ?? RISK_DEFAULT;
+  return (
+    <div style={{ position: "fixed", top: 12, right: 12, zIndex: 9999 }}>
+      <button
+        type="button"
+        onClick={open ? onClose : onOpen}
+        style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+          background: "rgba(15,23,42,0.92)", border: "1px solid rgba(51,65,85,0.9)",
+          color: "#64748b", borderRadius: 8, padding: "4px 10px", cursor: "pointer",
+        }}
+      >
+        {open ? "✕ Debug" : "Debug"}
+      </button>
+      {open && (
+      <div style={{
+        marginTop: 6, background: "rgba(10,15,28,0.97)", border: "1px solid rgba(51,65,85,0.8)",
+        borderRadius: 12, padding: "12px 14px", width: 280, maxHeight: "80dvh",
+        overflowY: "auto", fontSize: 10, color: "#94a3b8", lineHeight: 1.6,
+      }}>
+        <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", color: "#475569", textTransform: "uppercase" }}>
+          AI Debug Trace
+        </p>
+        <Row label="currentStep" value={currentStep} />
+        <Row label="tiltFailCount" value={String(tiltFailCount)} />
+        <Row label="risk_level" value={r.risk_level} color={RISK_COLOR[r.risk_level]} />
+        <Row label="reason" value={r.reason} wrap />
+        <Row label="step_up" value={r.step_up} />
+        {trace.updatedAt && <Row label="updatedAt" value={trace.updatedAt} />}
+        {trace.lastRiskRequest != null && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>lastRiskRequest</p>
+            <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {JSON.stringify(trace.lastRiskRequest, null, 2)}
+            </pre>
+          </div>
+        )}
+        {trace.lastRiskResponse != null && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>lastRiskResponse</p>
+            <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {JSON.stringify(trace.lastRiskResponse, null, 2)}
+            </pre>
+          </div>
+        )}
+        {trace.lastNarratePayload != null && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>lastNarratePayload</p>
+            <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {JSON.stringify(trace.lastNarratePayload, null, 2)}
+            </pre>
+          </div>
+        )}
+        {trace.lastNarrateResult != null && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>lastNarrateResult</p>
+            <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {trace.lastNarrateResult}
+            </pre>
+          </div>
+        )}
+      </div>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value, color, wrap }: { label: string; value: string; color?: string; wrap?: boolean }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 2, alignItems: wrap ? "flex-start" : "center", flexWrap: wrap ? "wrap" : "nowrap" }}>
+      <span style={{ color: "#475569", flexShrink: 0 }}>{label}</span>
+      <span style={{ color: color ?? "#cbd5e1", textAlign: "right", wordBreak: wrap ? "break-word" : "normal" }}>{value}</span>
+    </div>
+  );
+}
+
+// ─── Voice Guidance Button ────────────────────────────────────────────────────
+function VoiceGuidanceButton({
+  step,
+  riskLevel,
+  disabled,
+  voiceLoading,
+  voiceText,
+  onNarrate,
+}: {
+  step: "tilt" | "beat";
+  riskLevel: RiskLevel;
+  disabled?: boolean;
+  voiceLoading: boolean;
+  voiceText: string | null;
+  onNarrate: () => Promise<void>;
+}) {
+  const handleClick = useCallback(() => {
+    if (voiceLoading || disabled) return;
+    onNarrate();
+  }, [voiceLoading, disabled, onNarrate]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={voiceLoading || disabled}
+        style={{
+          height: 36, borderRadius: 10, border: "1px solid rgba(51,65,85,0.8)",
+          background: "rgba(30,41,59,0.8)", color: voiceLoading || disabled ? "#475569" : "#93c5fd",
+          fontSize: 12, fontWeight: 500, cursor: voiceLoading || disabled ? "default" : "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          width: "100%", transition: "color 0.15s",
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M8 1a3 3 0 0 1 3 3v4a3 3 0 1 1-6 0V4a3 3 0 0 1 3-3Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M3 8a5 5 0 0 0 10 0M8 13v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        {voiceLoading ? "Loading…" : "Enable AI Voice Guidance"}
+      </button>
+      {voiceText != null && voiceText !== "" && (
+        <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", lineHeight: 1.5, margin: 0 }}>
+          {voiceText}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -485,7 +701,81 @@ export default function VerificationWizard({
   const { smoothedBeta, smoothedGamma, smoothedRef, available, permissionState, requestPermission } =
     useDeviceOrientation();
 
+  // ── Verification state machine (AI) ────────────────────────────────────────
+  const [risk, setRisk] = useState<RiskResult | null>(null);
+  const [riskLoading, setRiskLoading] = useState(true);
+  const [tiltFailCount, setTiltFailCount] = useState(0);
+  const tiltFailCountRef = useRef(0);
+  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceText, setVoiceText] = useState<string | null>(null);
+  const [debugOpen, setDebugOpen] = useState(false);
+
+  const [trace, setTrace] = useState<VerificationTrace>({
+    lastRiskRequest: null,
+    lastRiskResponse: null,
+    lastNarratePayload: null,
+    lastNarrateResult: null,
+    updatedAt: null,
+  });
+
   const [screen, setScreen] = useState<Screen>("intro");
+
+  const callRiskEval = useCallback(async (failCount: number): Promise<RiskResult> => {
+    const payload = { ...DEMO_RISK_PAYLOAD, tilt_fail_count: failCount };
+    const ts = new Date().toISOString();
+    setTrace((prev) => ({ ...prev, lastRiskRequest: payload as Record<string, unknown>, updatedAt: ts }));
+    try {
+      const data = await evaluateRisk(payload);
+      setRisk(data);
+      setTrace((prev) => ({ ...prev, lastRiskResponse: data, updatedAt: new Date().toISOString() }));
+      return data;
+    } catch {
+      setRisk(RISK_DEFAULT);
+      setTrace((prev) => ({ ...prev, lastRiskResponse: RISK_DEFAULT, updatedAt: new Date().toISOString() }));
+      return RISK_DEFAULT;
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRiskLoading(true);
+    callRiskEval(0)
+      .finally(() => {
+        if (!cancelled) setRiskLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [callRiskEval]);
+
+  const handleNarrate = useCallback(async () => {
+    const step: "tilt" | "beat" = screen === "beat" ? "beat" : "tilt";
+    const payload = {
+      step,
+      risk_level: risk?.risk_level ?? "medium",
+      accessibility: { voice_guidance: true },
+    };
+    setVoiceLoading(true);
+    setVoiceText(null);
+    const ts = new Date().toISOString();
+    setTrace((prev) => ({ ...prev, lastNarratePayload: payload as Record<string, unknown>, updatedAt: ts }));
+    try {
+      const result = await narrate(payload);
+      if (result.kind === "audio") {
+        const url = URL.createObjectURL(result.blob);
+        const audio = new Audio(url);
+        audio.play().catch(() => {});
+        audio.addEventListener("ended", () => URL.revokeObjectURL(url));
+        setTrace((prev) => ({ ...prev, lastNarrateResult: "audio", updatedAt: new Date().toISOString() }));
+      } else {
+        setVoiceText(result.text);
+        setTrace((prev) => ({ ...prev, lastNarrateResult: result.text || null, updatedAt: new Date().toISOString() }));
+      }
+    } catch {
+      setTrace((prev) => ({ ...prev, lastNarrateResult: "(error)", updatedAt: new Date().toISOString() }));
+    } finally {
+      setVoiceLoading(false);
+    }
+  }, [risk?.risk_level, screen]);
+
   const [motionUnlocked, setMotionUnlocked] = useState(false);
   const [taskId, setTaskId] = useState<TaskId>("left");
   const [confidenceTarget, setConfidenceTarget] = useState(92);
@@ -545,6 +835,13 @@ export default function VerificationWizard({
     return true;
   }, [pickSong]);
 
+  const finish = useCallback((score: ScoreBreakdown) => {
+    setFinalScore(score);
+    setConfidenceTarget(87 + Math.floor(Math.random() * 10));
+    setScreen("result");
+  }, []);
+
+  // Start Verification: always go to tilt (default verification step)
   const advanceToTasks = useCallback(() => {
     setScreen("tasks");
     setTaskId("left");
@@ -561,12 +858,6 @@ export default function VerificationWizard({
     setHoldPct(0);
     setPulseKey((k) => k + 1);
   }, [smoothedRef]);
-
-  const finish = useCallback((score: ScoreBreakdown) => {
-    setFinalScore(score);
-    setConfidenceTarget(87 + Math.floor(Math.random() * 10));
-    setScreen("result");
-  }, []);
 
   useEffect(() => {
     if (screen !== "tasks") return;
@@ -673,19 +964,32 @@ export default function VerificationWizard({
 
       setInside(inZone);
 
-      // Track time outside circle — triggers beat challenge after GYRO_FAIL_SECONDS
+      // Track time outside circle — triggers tilt-fail re-evaluation + beat challenge
       if (!inZone && !gyroFailTriggeredRef.current) {
         outsideMsRef.current += dtMs;
         if (outsideMsRef.current >= GYRO_FAIL_SECONDS * 1000) {
           gyroFailTriggeredRef.current = true;
           window.cancelAnimationFrame(raf);
-          // Trigger beat challenge if songs available, otherwise just reset timer
-          const triggered = triggerBeatChallenge();
-          if (!triggered) {
-            // No songs: just reset the outside timer and let them keep trying
-            outsideMsRef.current = 0;
-            gyroFailTriggeredRef.current = false;
-          }
+
+          // Increment tilt fail count and re-evaluate risk
+          const newCount = tiltFailCountRef.current + 1;
+          tiltFailCountRef.current = newCount;
+          setTiltFailCount(newCount);
+
+          callRiskEval(newCount).then((updatedRisk) => {
+            if (updatedRisk.risk_level === "high" && newCount >= 1) {
+              // Route to beat challenge
+              const triggered = triggerBeatChallenge();
+              if (!triggered) {
+                outsideMsRef.current = 0;
+                gyroFailTriggeredRef.current = false;
+              }
+            } else {
+              // Medium/low: let user retry tilt
+              outsideMsRef.current = 0;
+              gyroFailTriggeredRef.current = false;
+            }
+          });
           return;
         }
       } else if (inZone) {
@@ -711,7 +1015,7 @@ export default function VerificationWizard({
 
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [available, finish, permissionState, reduceMotion, screen, smoothedRef, taskId, triggerBeatChallenge]);
+  }, [available, callRiskEval, finish, permissionState, reduceMotion, screen, smoothedRef, taskId, triggerBeatChallenge]);
 
   const completedCount = useMemo(() => {
     if (screen === "result") return 3;
@@ -773,10 +1077,24 @@ export default function VerificationWizard({
     if (screen !== "tasks" || taskId !== "steady" || inside) return null;
     const remaining = Math.ceil((GYRO_FAIL_SECONDS * 1000 - outsideMsRef.current) / 1000);
     return remaining;
-  }, [screen, taskId, inside, pulseKey]); // pulseKey forces re-eval on each tick
+  }, [screen, taskId, inside]);
+
+  const currentStep =
+    screen === "intro" ? "preview" :
+    screen === "tasks" ? "tilt" :
+    screen === "beat" ? "beat" : "complete";
 
   return (
     <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
+      <DebugDrawer
+        currentStep={screen === "tasks" ? `tilt:${taskId}` : currentStep}
+        tiltFailCount={tiltFailCount}
+        risk={risk}
+        trace={trace}
+        open={debugOpen}
+        onOpen={() => setDebugOpen(true)}
+        onClose={() => setDebugOpen(false)}
+      />
       <AnimatePresence mode="popLayout" initial={false}>
 
         {/* ═══════════════════════════════════════════════════════════
@@ -864,6 +1182,11 @@ export default function VerificationWizard({
               Move your phone to see real-time orientation tracking.
             </p>
 
+            {/* Trust chip + Debug */}
+            <div style={{ position: "relative", zIndex: 1, width: "min(320px, 90vw)" }}>
+              <TrustChip risk={risk} loading={riskLoading} onDebugClick={() => setDebugOpen(true)} />
+            </div>
+
             <div
               style={{
                 position: "relative",
@@ -872,6 +1195,17 @@ export default function VerificationWizard({
                 marginBottom: "calc(20px + env(safe-area-inset-bottom, 0px))"
               }}
             >
+              <div style={{ marginBottom: 10 }}>
+                <VoiceGuidanceButton
+                  step="tilt"
+                  riskLevel={risk?.risk_level ?? "medium"}
+                  disabled={riskLoading}
+                  voiceLoading={voiceLoading}
+                  voiceText={voiceText}
+                  onNarrate={handleNarrate}
+                />
+              </div>
+
               {granted ? (
                 <motion.button
                   type="button"
@@ -950,14 +1284,17 @@ export default function VerificationWizard({
             transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
           >
             <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
-                <p className="text-[10px] font-medium text-slate-500">
-                  Step {completedCount + 1} of 3
-                </p>
+                <div className="flex items-center gap-3">
+                  <TrustChip risk={risk} loading={riskLoading} onDebugClick={() => setDebugOpen(true)} />
+                  <p className="text-[10px] font-medium text-slate-500">
+                    Step {completedCount + 1} of 3
+                  </p>
+                </div>
               </div>
 
-              <div className="mt-6 space-y-1">
+              <div className="mt-4 space-y-1">
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.p
                     key={stepTitle}
@@ -1112,6 +1449,16 @@ export default function VerificationWizard({
               <div className="mt-6">
                 <Stepper completed={completedCount} />
               </div>
+
+              <div className="mt-4">
+                <VoiceGuidanceButton
+                  step="tilt"
+                  riskLevel={risk?.risk_level ?? "medium"}
+                  voiceLoading={voiceLoading}
+                  voiceText={voiceText}
+                  onNarrate={handleNarrate}
+                />
+              </div>
             </div>
           </motion.section>
         ) : null}
@@ -1120,13 +1467,23 @@ export default function VerificationWizard({
             SCREEN 2b — BEAT CHALLENGE
         ═══════════════════════════════════════════════════════════ */}
         {screen === "beat" && beatSong ? (
-          <BeatChallenge
-            key="beat"
-            song={beatSong}
-            onPass={handleBeatPass}
-            onSkip={handleBeatSkip}
-            reduceMotion={reduceMotion}
-          />
+          <div key="beat" style={{ position: "relative" }}>
+            <BeatChallenge
+              song={beatSong}
+              onPass={handleBeatPass}
+              onSkip={handleBeatSkip}
+              reduceMotion={reduceMotion}
+            />
+            <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", width: "min(320px, 90vw)", zIndex: 100 }}>
+              <VoiceGuidanceButton
+                step="beat"
+                riskLevel={risk?.risk_level ?? "medium"}
+                voiceLoading={voiceLoading}
+                voiceText={voiceText}
+                onNarrate={handleNarrate}
+              />
+            </div>
+          </div>
         ) : null}
 
         {/* ═══════════════════════════════════════════════════════════
