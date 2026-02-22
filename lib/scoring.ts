@@ -73,9 +73,10 @@ function computeEntropyScore(samples: MotionSample[]) {
     const dGamma = p1.gamma - p0.gamma;
     v.push(Math.hypot(dBeta, dGamma) / dt);
   }
-  // acceleration magnitude
+  // acceleration magnitude: v[i] is velocity from samples[i] to samples[i+1], v[i-1] from samples[i-1] to samples[i]
+  // so the time spanning both velocity measurements is samples[i-1] to samples[i+1]
   for (let i = 1; i < v.length; i++) {
-    const dt = safeDtMs(samples[i - 1]!, samples[i]!) / 1000;
+    const dt = safeDtMs(samples[i - 1]!, samples[i + 1]!) / 1000;
     a.push(Math.abs(v[i]! - v[i - 1]!) / dt);
   }
   // jerk magnitude

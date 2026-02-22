@@ -42,7 +42,8 @@ function HomePageClient() {
   }, []);
 
   useEffect(() => {
-    // scarcity drop
+    if (reduceMotion) return;
+    // scarcity drop — cleanup clears recursive timeouts to avoid memory leaks
     const tick = () => {
       setTicketsLeft((n) => Math.max(0, n - (Math.random() > 0.55 ? 1 : 0)));
       const next = 1600 + Math.floor(Math.random() * 1600);
@@ -51,8 +52,11 @@ function HomePageClient() {
     };
     const first = window.setTimeout(tick, 1400);
     timersRef.current.push(first);
-    return () => {};
-  }, []);
+    return () => {
+      for (const id of timersRef.current) window.clearTimeout(id);
+      timersRef.current = [];
+    };
+  }, [reduceMotion]);
 
   useEffect(() => {
     // cart countdown

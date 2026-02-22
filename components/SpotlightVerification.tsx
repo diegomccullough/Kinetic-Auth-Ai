@@ -221,7 +221,7 @@ export default function SpotlightVerification({
       const x = mapTiltToPx(gamma);
       const y = mapTiltToPx(beta);
       const dist = Math.hypot(x, y);
-      const inZone = dist < RADIUS_THRESHOLD_PX;
+      const inZone = dist <= RADIUS_THRESHOLD_PX;
 
       const insideRate = 70; // pct/sec
       const outsideRate = 15; // pct/sec
