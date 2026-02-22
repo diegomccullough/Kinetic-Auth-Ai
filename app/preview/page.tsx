@@ -24,7 +24,9 @@ export default function MotionPreviewPage() {
   const targetRef = useRef({ beta: 0, gamma: 0 });
   const smoothRef = useRef({ beta: 0, gamma: 0 });
   const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
-  const calibrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const calibrationTimeoutRef = useRef<
+    number | ReturnType<typeof setTimeout> | null
+  >(null);
   const rafRef = useRef<number | null>(null);
 
   const [sensorValues, setSensorValues] = useState({ beta: 0, gamma: 0 });
