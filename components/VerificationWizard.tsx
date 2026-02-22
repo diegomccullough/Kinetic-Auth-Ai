@@ -170,6 +170,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
     useDeviceOrientation();
 
   const [screen, setScreen] = useState<Screen>("intro");
+  const [motionUnlocked, setMotionUnlocked] = useState(false);
   const [taskId, setTaskId] = useState<TaskId>("left");
   const [confidenceTarget, setConfidenceTarget] = useState(92);
   const [confidenceDisplay, setConfidenceDisplay] = useState(0);
@@ -374,7 +375,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
     return () => controls.stop();
   }, [confidenceTarget, reduceMotion, screen]);
 
-  const granted = permissionState === "granted";
+  const granted = permissionState === "granted" || motionUnlocked;
 
   return (
     <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
@@ -463,7 +464,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
               Move your phone to see real-time orientation tracking.
             </p>
 
-            {/* Start verification CTA */}
+            {/* Permission / Continue CTA: permission does NOT auto-advance */}
             <div
               style={{
                 position: "relative",
@@ -472,33 +473,54 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 width: "min(320px, 90vw)"
               }}
             >
-              <motion.button
-                type="button"
-                onClick={async () => {
-                  if (!available || permissionState === "unsupported" || permissionState === "denied") return;
-                  if (permissionState !== "granted") {
+              {granted ? (
+                <motion.button
+                  type="button"
+                  onClick={advanceToTasks}
+                  style={{
+                    width: "100%",
+                    height: 52,
+                    borderRadius: 14,
+                    background: "#1d4ed8",
+                    color: "#fff",
+                    fontSize: 15,
+                    fontWeight: 600,
+                    letterSpacing: "-0.01em",
+                    border: "none",
+                    cursor: "pointer"
+                  }}
+                  whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+                >
+                  Start Verification
+                </motion.button>
+              ) : (
+                <motion.button
+                  type="button"
+                  onClick={async () => {
+                    if (!available || permissionState === "unsupported" || permissionState === "denied") return;
                     const res = await requestPermission();
-                    if (res !== "granted") return;
-                    vibrate(10);
-                  }
-                  advanceToTasks();
-                }}
-                style={{
-                  width: "100%",
-                  height: 52,
-                  borderRadius: 14,
-                  background: "#1d4ed8",
-                  color: "#fff",
-                  fontSize: 15,
-                  fontWeight: 600,
-                  letterSpacing: "-0.01em",
-                  border: "none",
-                  cursor: "pointer"
-                }}
-                whileTap={reduceMotion ? undefined : { scale: 0.98 }}
-              >
-                {permissionState === "needs_gesture" ? "Enable Motion Sensor" : "Start Verification"}
-              </motion.button>
+                    if (res === "granted") {
+                      setMotionUnlocked(true);
+                      vibrate(10);
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    height: 52,
+                    borderRadius: 14,
+                    background: "#1d4ed8",
+                    color: "#fff",
+                    fontSize: 15,
+                    fontWeight: 600,
+                    letterSpacing: "-0.01em",
+                    border: "none",
+                    cursor: "pointer"
+                  }}
+                  whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+                >
+                  Enable Motion Sensor
+                </motion.button>
+              )}
               <p
                 style={{
                   marginTop: 10,
