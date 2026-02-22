@@ -28,7 +28,7 @@ export type VerificationTrace = {
   updatedAt: string | null;
 };
 
-type CurrentStep = "preview" | "tilt" | "analyzing" | "beat" | "complete";
+type CurrentStep = "preview" | "tilt" | "analyzing" | "step_up_overview" | "beat" | "complete";
 
 const RISK_DEFAULT: RiskResult = {
   risk_level: "medium",
@@ -249,7 +249,7 @@ const BEAT_WINDOW_MS = 220;
 /** Number of beats the user must hit to pass the beat challenge */
 const BEATS_REQUIRED = 8;
 
-type Screen = "intro" | "tasks" | "analyzing" | "beat" | "result";
+type Screen = "intro" | "tasks" | "analyzing" | "step_up_overview" | "beat" | "result";
 type TaskId = "left" | "right" | "steady";
 
 function ringDashOffset(radius: number, pct: number) {
@@ -371,6 +371,94 @@ function HoldRing({
         transition={{ type: "spring", stiffness: 200, damping: 28, mass: 0.6 }}
       />
     </svg>
+  );
+}
+
+// ─── Step-Up Overview (user must press Continue before beat challenge starts) ─
+function StepUpOverviewScreen({ onContinue, reduceMotion }: { onContinue: () => void; reduceMotion: boolean | null }) {
+  return (
+    <motion.section
+      key="step_up_overview"
+      className="min-h-dvh flex flex-col items-center justify-center px-6 py-10"
+      style={{ background: "#0f172a" }}
+      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+      transition={reduceMotion ? undefined : { duration: 0.35, ease: "easeOut" }}
+    >
+      <div className="w-full max-w-[360px] flex flex-col gap-6">
+        {/* Icon */}
+        <div className="flex justify-center">
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: "50%",
+              background: "rgba(239,68,68,0.12)",
+              border: "1.5px solid rgba(239,68,68,0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Text */}
+        <div className="text-center flex flex-col gap-3">
+          <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH · STEP-UP</p>
+          <h2 className="text-xl font-bold text-white leading-snug">Enhanced Verification Required</h2>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            We detected inconsistent motion patterns during verification. To protect queue fairness, we need one additional step.
+          </p>
+        </div>
+
+        {/* Reasons */}
+        <ul className="flex flex-col gap-2" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          {["Failed behavioral verification", "Elevated automation risk"].map((item) => (
+            <li
+              key={item}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                color: "rgba(148,163,184,0.85)",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#ef4444", flexShrink: 0 }} />
+              {item}
+            </li>
+          ))}
+        </ul>
+
+        {/* CTA */}
+        <motion.button
+          type="button"
+          onClick={onContinue}
+          style={{
+            width: "100%",
+            height: 48,
+            borderRadius: 14,
+            background: "#1d4ed8",
+            color: "#fff",
+            fontSize: 15,
+            fontWeight: 700,
+            letterSpacing: "-0.01em",
+            border: "none",
+            cursor: "pointer",
+          }}
+          whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+        >
+          Continue
+        </motion.button>
+      </div>
+    </motion.section>
   );
 }
 
@@ -1335,14 +1423,15 @@ export default function VerificationWizard({
     callRiskEval(newCount).then((updatedRisk) => {
       const ts = new Date().toISOString();
       if (updatedRisk.risk_level === "high") {
-        setTrace((prev) => ({ ...prev, lastDecision: "Tilt failed; risk high; escalating to beat", updatedAt: ts }));
-        // Hold ANALYZING for at least 1500 ms so the meter animation completes
+        setTrace((prev) => ({ ...prev, lastDecision: "Tilt failed; risk high; showing step-up overview", updatedAt: ts }));
+        // Hold ANALYZING for at least 1500 ms so the meter animation completes,
+        // then land on the step-up overview — user must press Continue to start beat
         setTimeout(() => {
           const song = songs && songs.length > 0 ? songs[Math.floor(Math.random() * songs.length)] : null;
           beatTriggeredRef.current = true;
           setBeatSong(song);
-          setCurrentStep("beat");
-          setScreen("beat");
+          setCurrentStep("step_up_overview");
+          setScreen("step_up_overview");
         }, 1500);
       } else {
         setTrace((prev) => ({ ...prev, lastDecision: "Tilt failed; risk not high; retrying tilt", updatedAt: ts }));
@@ -1374,6 +1463,12 @@ export default function VerificationWizard({
   }, [confidenceTarget, reduceMotion, screen]);
 
   const granted = permissionState === "granted" || motionUnlocked;
+
+  // User pressed Continue on the step-up overview — now reveal the beat challenge
+  const handleStepUpOverviewContinue = useCallback(() => {
+    setCurrentStep("beat");
+    setScreen("beat");
+  }, []);
 
   // Beat challenge always follows tilt failure — passing it gives a passing score
   const handleBeatPass = useCallback(() => {
@@ -1513,16 +1608,6 @@ export default function VerificationWizard({
                 gap: 8,
               }}
             >
-              {/* Secondary: AI Voice Guidance */}
-              <VoiceGuidanceButton
-                step="tilt"
-                riskLevel={risk?.risk_level ?? "medium"}
-                disabled={riskLoading}
-                voiceLoading={voiceLoading}
-                voiceText={voiceText}
-                onNarrate={handleNarrate}
-              />
-
               {/* Primary CTA */}
               {granted ? (
                 <motion.button
@@ -1621,7 +1706,18 @@ export default function VerificationWizard({
         ) : null}
 
         {/* ═══════════════════════════════════════════════════════════
-            SCREEN 2c — BEAT CHALLENGE (only when tilt failed + risk high)
+            SCREEN 2c — STEP-UP OVERVIEW (user confirms before beat starts)
+        ═══════════════════════════════════════════════════════════ */}
+        {currentStep === "step_up_overview" && screen === "step_up_overview" ? (
+          <StepUpOverviewScreen
+            key="step_up_overview"
+            onContinue={handleStepUpOverviewContinue}
+            reduceMotion={reduceMotion}
+          />
+        ) : null}
+
+        {/* ═══════════════════════════════════════════════════════════
+            SCREEN 2d — BEAT CHALLENGE (only when tilt failed + risk high)
         ═══════════════════════════════════════════════════════════ */}
         {currentStep === "beat" && screen === "beat" ? (
           beatSong ? (
