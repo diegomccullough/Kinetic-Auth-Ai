@@ -22,10 +22,13 @@ type RiskResult = {
 export type VerificationTrace = {
   lastRiskRequest: Record<string, unknown> | null;
   lastRiskResponse: RiskResult | null;
+  lastDecision: string | null;
   lastNarratePayload: Record<string, unknown> | null;
   lastNarrateResult: string | null;
   updatedAt: string | null;
 };
+
+type CurrentStep = "preview" | "tilt" | "beat" | "complete";
 
 const RISK_DEFAULT: RiskResult = {
   risk_level: "medium",
@@ -125,6 +128,7 @@ function DebugDrawer({
         <Row label="risk_level" value={r.risk_level} color={RISK_COLOR[r.risk_level]} />
         <Row label="reason" value={r.reason} wrap />
         <Row label="step_up" value={r.step_up} />
+        {trace.lastDecision != null && <Row label="lastDecision" value={trace.lastDecision} wrap />}
         {trace.updatedAt && <Row label="updatedAt" value={trace.updatedAt} />}
         {trace.lastRiskRequest != null && (
           <div style={{ marginTop: 8 }}>
@@ -381,6 +385,35 @@ function HoldRing({
         transition={{ type: "spring", stiffness: 200, damping: 28, mass: 0.6 }}
       />
     </svg>
+  );
+}
+
+// ─── Beat placeholder (when no song / demo) ────────────────────────────────────
+function BeatPlaceholder({ onComplete }: { onComplete: () => void }) {
+  return (
+    <motion.section
+      key="beat-placeholder"
+      className="min-h-dvh flex flex-col items-center justify-center px-6 py-10"
+      style={{ background: "#0f172a" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <div className="w-full max-w-[380px] flex flex-col items-center gap-6">
+        <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH · STEP-UP</p>
+        <h2 className="text-xl font-bold text-white">Beat Challenge (Step-Up)</h2>
+        <p className="text-sm text-slate-400 text-center">
+          Additional verification step after tilt failure at high risk.
+        </p>
+        <button
+          type="button"
+          onClick={onComplete}
+          className="w-full max-w-[280px] h-12 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors"
+        >
+          Complete
+        </button>
+      </div>
+    </motion.section>
   );
 }
 
@@ -685,6 +718,408 @@ function BeatChallenge({
   );
 }
 
+// ─── Tilt Challenge (owns the full left → right → steady sequence) ───────────
+type TiltAccumulatedData = {
+  motionSamples: MotionSample[];
+  directedTimings: { timeToLeft?: number; timeToRight?: number };
+};
+
+function TiltChallenge({
+  smoothedGamma,
+  smoothedRef,
+  reduceMotion,
+  available,
+  permissionState,
+  songs,
+  risk,
+  riskLoading,
+  voiceLoading,
+  voiceText,
+  onNarrate,
+  onDebugClick,
+  onSuccess,
+  onFailure,
+}: {
+  smoothedGamma: number;
+  smoothedRef: { current: { beta: number; gamma: number; alpha: number } };
+  reduceMotion: boolean | null;
+  available: boolean;
+  permissionState: string;
+  songs?: EventSong[];
+  risk: RiskResult | null;
+  riskLoading: boolean;
+  voiceLoading: boolean;
+  voiceText: string | null;
+  onNarrate: () => Promise<void>;
+  onDebugClick: () => void;
+  onSuccess: (score: ScoreBreakdown) => void;
+  onFailure: (accumulated: TiltAccumulatedData) => void;
+}) {
+  const [taskId, setTaskId] = useState<TaskId>("left");
+  const [holdPct, setHoldPct] = useState(0);
+  const [dot, setDot] = useState({ x: 0, y: 0 });
+  const [inside, setInside] = useState(false);
+  const [pulseKey, setPulseKey] = useState(0);
+
+  const timingsRef = useRef<{ timeToLeft?: number; timeToRight?: number }>({});
+  const taskStartAtRef = useRef<number | null>(null);
+  const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
+  const motionSamplesRef = useRef<MotionSample[]>([]);
+  const stableMsRef = useRef(0);
+  const tiltHoldMsRef = useRef(0);
+  const outsideMsRef = useRef(0);
+  const gyroFailTriggeredRef = useRef(false);
+
+  const completedCount = taskId === "left" ? 0 : taskId === "right" ? 1 : 2;
+  const cueLine =
+    taskId === "left" ? "Tilt left until the ring fills…" :
+    taskId === "right" ? "Now tilt right…" :
+    "Hold steady in the center…";
+  const stepTitle =
+    taskId === "left" ? "Step 1 — Tilt Left" :
+    taskId === "right" ? "Step 2 — Tilt Right" :
+    "Step 3 — Hold Steady";
+  const overallProgressPct = clamp(
+    ((completedCount + clamp(holdPct, 0, 1)) / TASKS_TOTAL) * 100,
+    0, 100
+  );
+  const outsideSecsRemaining =
+    taskId !== "steady" || inside
+      ? null
+      : Math.ceil((GYRO_FAIL_SECONDS * 1000 - outsideMsRef.current) / 1000);
+
+  // Motion tracking — re-runs on taskId change (next step) or on mount
+  useEffect(() => {
+    if (permissionState !== "granted") return;
+    if (!available) return;
+
+    baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
+    taskStartAtRef.current = performance.now();
+    stableMsRef.current = 0;
+    tiltHoldMsRef.current = 0;
+    outsideMsRef.current = 0;
+    gyroFailTriggeredRef.current = false;
+    setHoldPct(0);
+    setInside(false);
+    setDot({ x: 0, y: 0 });
+
+    let raf = 0;
+    let last = 0;
+    let completing = false;
+
+    const completeTask = (id: TaskId, stabilityPct: number, stabilityHoldPct: number) => {
+      if (completing) return;
+      completing = true;
+      vibrate([10, 18, 10]);
+      setPulseKey((k) => k + 1);
+
+      const started = taskStartAtRef.current ?? performance.now();
+      const elapsed = Math.max(0, performance.now() - started);
+      if (id === "left" && timingsRef.current.timeToLeft === undefined) timingsRef.current.timeToLeft = Math.round(elapsed);
+      if (id === "right" && timingsRef.current.timeToRight === undefined) timingsRef.current.timeToRight = Math.round(elapsed);
+
+      window.setTimeout(() => {
+        setTaskId((prev) => {
+          if (prev === "left") {
+            baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
+            taskStartAtRef.current = performance.now();
+            outsideMsRef.current = 0;
+            gyroFailTriggeredRef.current = false;
+            completing = false;
+            return "right";
+          }
+          if (prev === "right") {
+            baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
+            taskStartAtRef.current = performance.now();
+            outsideMsRef.current = 0;
+            gyroFailTriggeredRef.current = false;
+            completing = false;
+            return "steady";
+          }
+          // steady complete → success
+          const score = scoreHumanConfidence({
+            motionSamples: motionSamplesRef.current,
+            directedTimings: timingsRef.current,
+            stabilityPct,
+            stabilityHoldPct,
+          });
+          onSuccess(score);
+          return prev;
+        });
+      }, reduceMotion ? 0 : 260);
+    };
+
+    const tick = (t: number) => {
+      raf = window.requestAnimationFrame(tick);
+      if (t - last < 1000 / 60) return;
+      const dtMs = last ? Math.min(60, t - last) : 16;
+      last = t;
+
+      const s = smoothedRef.current;
+      motionSamplesRef.current.push({ beta: s.beta, gamma: s.gamma, t });
+      if (motionSamplesRef.current.length > 160) motionSamplesRef.current.shift();
+
+      const base = baselineRef.current ?? { beta: s.beta, gamma: s.gamma };
+      const dBeta = s.beta - base.beta;
+      const dGamma = s.gamma - base.gamma;
+
+      if (taskId === "left" || taskId === "right") {
+        const ok = taskId === "left" ? dGamma < -TILT_TASK_THRESHOLD_DEG : dGamma > TILT_TASK_THRESHOLD_DEG;
+        tiltHoldMsRef.current = ok ? tiltHoldMsRef.current + dtMs : 0;
+        tiltHoldMsRef.current = clamp(tiltHoldMsRef.current, 0, TILT_TASK_HOLD_MS);
+        setHoldPct(tiltHoldMsRef.current / TILT_TASK_HOLD_MS);
+
+        if (tiltHoldMsRef.current >= TILT_TASK_HOLD_MS) {
+          tiltHoldMsRef.current = 0;
+          setHoldPct(0);
+          completeTask(taskId, 0, 0);
+        }
+        return;
+      }
+
+      // ── Steady task ────────────────────────────────────────────────────────
+      const xTarget = clamp(dGamma * DOT_PX_PER_DEG, -DOT_MAX_OFFSET_PX, DOT_MAX_OFFSET_PX);
+      const yTarget = clamp(dBeta * DOT_PX_PER_DEG, -DOT_MAX_OFFSET_PX, DOT_MAX_OFFSET_PX);
+      const dist = Math.hypot(xTarget, yTarget);
+      const inZone = dist <= HOLD_STEADY_RADIUS_PX;
+
+      setDot((prev) => {
+        const nx = prev.x + (xTarget - prev.x) * 0.18;
+        const ny = prev.y + (yTarget - prev.y) * 0.18;
+        if (Math.abs(prev.x - nx) < 0.2 && Math.abs(prev.y - ny) < 0.2) return prev;
+        return { x: nx, y: ny };
+      });
+      setInside(inZone);
+
+      if (!inZone && !gyroFailTriggeredRef.current) {
+        outsideMsRef.current += dtMs;
+        if (outsideMsRef.current >= GYRO_FAIL_SECONDS * 1000) {
+          gyroFailTriggeredRef.current = true;
+          window.cancelAnimationFrame(raf);
+          onFailure({
+            motionSamples: [...motionSamplesRef.current],
+            directedTimings: { ...timingsRef.current },
+          });
+          return;
+        }
+      } else if (inZone) {
+        outsideMsRef.current = 0;
+      }
+
+      stableMsRef.current = inZone
+        ? clamp(stableMsRef.current + dtMs, 0, HOLD_STEADY_TARGET_MS)
+        : clamp(stableMsRef.current - dtMs * 0.6, 0, HOLD_STEADY_TARGET_MS);
+
+      const hold = stableMsRef.current / HOLD_STEADY_TARGET_MS;
+      setHoldPct(hold);
+
+      const stabilityPct = clamp(100 * (1 - dist / HOLD_STEADY_RADIUS_PX), 0, 100);
+      const stabilityHoldPct = hold * 100;
+
+      if (stableMsRef.current >= HOLD_STEADY_TARGET_MS) {
+        stableMsRef.current = 0;
+        setHoldPct(1);
+        completeTask("steady", stabilityPct, stabilityHoldPct);
+      }
+    };
+
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [available, permissionState, reduceMotion, smoothedRef, taskId]);
+
+  return (
+    <motion.section
+      key="tasks"
+      className="min-h-dvh"
+      style={{ background: "#0f172a" }}
+      initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
+      transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
+    >
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
+          <div className="flex items-center gap-3">
+            <TrustChip risk={risk} loading={riskLoading} onDebugClick={onDebugClick} />
+            <p className="text-[10px] font-medium text-slate-500">Step {completedCount + 1} of 3</p>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-1">
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.p
+              key={stepTitle}
+              className="text-xl font-semibold tracking-tight text-white"
+              initial={reduceMotion ? false : { y: 8, opacity: 0 }}
+              animate={reduceMotion ? undefined : { y: 0, opacity: 1 }}
+              exit={reduceMotion ? undefined : { y: -8, opacity: 0 }}
+              transition={reduceMotion ? undefined : { type: "spring", stiffness: 280, damping: 26, mass: 0.5 }}
+            >
+              {stepTitle}
+            </motion.p>
+          </AnimatePresence>
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.p
+              key={cueLine}
+              className="text-sm text-slate-400"
+              initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
+              transition={reduceMotion ? undefined : { type: "spring", stiffness: 260, damping: 26 }}
+            >
+              {cueLine}
+            </motion.p>
+          </AnimatePresence>
+        </div>
+
+        <div
+          className={[
+            "relative mt-6 w-full overflow-hidden rounded-2xl border",
+            inside && taskId === "steady"
+              ? "border-emerald-700/40 bg-slate-800/60"
+              : "border-slate-700/50 bg-slate-800/60",
+          ].join(" ")}
+          style={{ height: "52dvh", minHeight: 320, maxHeight: 480 }}
+        >
+          <div className="relative grid h-full place-items-center p-6">
+            <AnimatePresence mode="popLayout" initial={false}>
+              {taskId === "left" || taskId === "right" ? (
+                <motion.div
+                  key={taskId}
+                  className="flex w-full flex-col items-center gap-8"
+                  initial={reduceMotion ? false : { opacity: 0 }}
+                  animate={reduceMotion ? undefined : { opacity: 1 }}
+                  exit={reduceMotion ? undefined : { opacity: 0 }}
+                  transition={reduceMotion ? undefined : { duration: 0.2 }}
+                >
+                  <div className="relative grid place-items-center">
+                    <div className="relative h-[180px] w-[180px]">
+                      <HoldRing pct01={holdPct} radius={70} strokeWidth={8} color="rgba(96,165,250,0.9)" />
+                      <div className="absolute inset-0 grid place-items-center">
+                        <ArrowGlyph direction={taskId} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="w-full px-4 space-y-1.5">
+                    <div className="flex justify-between text-[11px] text-slate-500">
+                      <span>← Left</span>
+                      <span>Right →</span>
+                    </div>
+                    <div className="relative h-2 w-full rounded-full bg-slate-700">
+                      <div className="absolute inset-y-0 left-1/2 w-px bg-slate-600" />
+                      <motion.div
+                        className="absolute inset-y-0 w-3 -translate-x-1/2 rounded-full bg-blue-400"
+                        style={{ left: `${50 + clamp(smoothedGamma, -28, 28) * (50 / 28)}%` }}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="steady"
+                  className="flex w-full flex-col items-center gap-8"
+                  initial={reduceMotion ? false : { opacity: 0 }}
+                  animate={reduceMotion ? undefined : { opacity: 1 }}
+                  exit={reduceMotion ? undefined : { opacity: 0 }}
+                  transition={reduceMotion ? undefined : { duration: 0.2 }}
+                >
+                  <div className="relative grid place-items-center">
+                    <div className="relative h-[180px] w-[180px]">
+                      <HoldRing
+                        pct01={holdPct}
+                        color={inside ? "rgba(52,211,153,0.9)" : "rgba(148,163,184,0.5)"}
+                        radius={74}
+                        strokeWidth={8}
+                      />
+                      <div className="absolute inset-0 grid place-items-center">
+                        <div className="relative h-[86%] w-[86%]">
+                          <div
+                            className={[
+                              "absolute left-1/2 top-1/2 h-[96px] w-[96px] -translate-x-1/2 -translate-y-1/2 rounded-full border",
+                              inside ? "border-emerald-500/40" : "border-slate-600/50",
+                            ].join(" ")}
+                            aria-hidden="true"
+                          />
+                          <motion.div
+                            className={[
+                              "absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full",
+                              inside ? "bg-emerald-400" : "bg-blue-400",
+                            ].join(" ")}
+                            animate={{ x: dot.x, y: dot.y, scale: inside ? 1.1 : 1 }}
+                            transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.25 }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {!inside && outsideSecsRemaining !== null && outsideSecsRemaining <= GYRO_FAIL_SECONDS && songs && songs.length > 0 && (
+                    <motion.p
+                      key={outsideSecsRemaining}
+                      className="text-xs font-semibold text-amber-400"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                    >
+                      {outsideSecsRemaining > 1
+                        ? `Move to center — beat challenge in ${outsideSecsRemaining}s`
+                        : "Beat challenge starting…"}
+                    </motion.p>
+                  )}
+
+                  <div className="w-full px-4 space-y-1.5">
+                    <div className="flex justify-between text-[11px] text-slate-500">
+                      <span>Stability</span>
+                      <span>{inside ? "Holding…" : "Move to center"}</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-700">
+                      <motion.div
+                        className={["h-full rounded-full", inside ? "bg-emerald-500" : "bg-slate-600"].join(" ")}
+                        animate={{ width: `${holdPct * 100}%` }}
+                        transition={{ type: "spring", stiffness: 240, damping: 28, mass: 0.55 }}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        <div className="mt-6 space-y-2">
+          <div className="flex justify-between text-[11px] text-slate-500">
+            <span>Overall progress</span>
+            <span>{Math.round(overallProgressPct)}%</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+            <motion.div
+              className="h-full rounded-full bg-blue-500"
+              initial={false}
+              animate={{ width: `${overallProgressPct}%` }}
+              transition={{ type: "spring", stiffness: 240, damping: 28, mass: 0.55 }}
+            />
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <Stepper completed={completedCount} />
+        </div>
+
+        <div className="mt-4">
+          <VoiceGuidanceButton
+            step="tilt"
+            riskLevel={risk?.risk_level ?? "medium"}
+            voiceLoading={voiceLoading}
+            voiceText={voiceText}
+            onNarrate={onNarrate}
+          />
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export type VerificationWizardProps = {
   onVerified?: (score: ScoreBreakdown) => void;
@@ -715,11 +1150,13 @@ export default function VerificationWizard({
   const [trace, setTrace] = useState<VerificationTrace>({
     lastRiskRequest: null,
     lastRiskResponse: null,
+    lastDecision: null,
     lastNarratePayload: null,
     lastNarrateResult: null,
     updatedAt: null,
   });
 
+  const [currentStep, setCurrentStep] = useState<CurrentStep>("preview");
   const [screen, setScreen] = useState<Screen>("intro");
 
   const callRiskEval = useCallback(async (failCount: number): Promise<RiskResult> => {
@@ -779,35 +1216,22 @@ export default function VerificationWizard({
   }, [risk?.risk_level, screen]);
 
   const [motionUnlocked, setMotionUnlocked] = useState(false);
-  const [taskId, setTaskId] = useState<TaskId>("left");
+  const [tiltAttemptKey, setTiltAttemptKey] = useState(0);
   const [confidenceTarget, setConfidenceTarget] = useState(92);
   const [confidenceDisplay, setConfidenceDisplay] = useState(0);
 
-  const [dot, setDot] = useState({ x: 0, y: 0 });
-  const [inside, setInside] = useState(false);
-  const [holdPct, setHoldPct] = useState(0);
-  const [pulseKey, setPulseKey] = useState(0);
-
-  // Beat challenge state — only triggered by gyro fail
+  // Beat challenge state — only triggered by tilt failure + high risk
   const [beatSong, setBeatSong] = useState<EventSong | null>(null);
   const beatTriggeredRef = useRef(false);
 
-  const timingsRef = useRef<{ timeToLeft?: number; timeToRight?: number }>({});
-  const taskStartAtRef = useRef<number | null>(null);
-  const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
-
-  const motionSamplesRef = useRef<MotionSample[]>([]);
-  const stableMsRef = useRef(0);
-  const tiltHoldMsRef = useRef(0);
-
-  // Tracks how long the ball has been outside the circle during "steady" task
-  const outsideMsRef = useRef(0);
-  const gyroFailTriggeredRef = useRef(false);
+  // Captured from TiltChallenge.onFailure for use in beat scoring
+  const capturedMotionRef = useRef<TiltAccumulatedData>({ motionSamples: [], directedTimings: {} });
 
   const [finalScore, setFinalScore] = useState<ScoreBreakdown>(() =>
     scoreHumanConfidence({ motionSamples: [], directedTimings: undefined, stabilityPct: 0, stabilityHoldPct: 0 })
   );
 
+<<<<<<< HEAD
   const cueLine = useMemo(() => {
     if (screen !== "tasks") return "";
     if (taskId === "left") return "Tilt your phone left until the ring fills…";
@@ -837,199 +1261,50 @@ export default function VerificationWizard({
     return true;
   }, [pickSong]);
 
+=======
+>>>>>>> d5939e4370a97249bcb0f549cce6f08e6cc44e15
   const finish = useCallback((score: ScoreBreakdown) => {
+    setCurrentStep("complete");
     setFinalScore(score);
     setConfidenceTarget(87 + Math.floor(Math.random() * 10));
     setScreen("result");
   }, []);
 
-  // Start Verification: always go to tilt (default verification step)
+  // Start Verification: always launch tilt first
   const advanceToTasks = useCallback(() => {
+    setCurrentStep("tilt");
     setScreen("tasks");
-    setTaskId("left");
-    timingsRef.current = {};
-    motionSamplesRef.current = [];
-    stableMsRef.current = 0;
-    tiltHoldMsRef.current = 0;
-    outsideMsRef.current = 0;
-    gyroFailTriggeredRef.current = false;
-    taskStartAtRef.current = performance.now();
-    baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
-    setDot({ x: 0, y: 0 });
-    setInside(false);
-    setHoldPct(0);
-    setPulseKey((k) => k + 1);
-  }, [smoothedRef]);
+  }, []);
 
-  useEffect(() => {
-    if (screen !== "tasks") return;
-    if (permissionState !== "granted") return;
-    if (!available) return;
+  // Called by TiltChallenge when all 3 tilt tasks succeed
+  const handleTiltSuccess = useCallback((score: ScoreBreakdown) => {
+    finish(score);
+  }, [finish]);
 
-    baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
-    taskStartAtRef.current = performance.now();
-    stableMsRef.current = 0;
-    tiltHoldMsRef.current = 0;
-    outsideMsRef.current = 0;
-    gyroFailTriggeredRef.current = false;
-    setHoldPct(0);
-    setInside(false);
-    setDot({ x: 0, y: 0 });
+  // Called by TiltChallenge when steady-hold times out (6 s outside circle)
+  const handleTiltFailure = useCallback((accumulated: TiltAccumulatedData) => {
+    capturedMotionRef.current = accumulated;
+    const newCount = tiltFailCountRef.current + 1;
+    tiltFailCountRef.current = newCount;
+    setTiltFailCount(newCount);
 
-    let raf = 0;
-    let last = 0;
-    let completing = false;
-
-    const completeTask = (id: TaskId, stabilityPct: number, stabilityHoldPct: number) => {
-      if (completing) return;
-      completing = true;
-      vibrate([10, 18, 10]);
-      setPulseKey((k) => k + 1);
-
-      const started = taskStartAtRef.current ?? performance.now();
-      const elapsed = Math.max(0, performance.now() - started);
-      if (id === "left" && timingsRef.current.timeToLeft === undefined) timingsRef.current.timeToLeft = Math.round(elapsed);
-      if (id === "right" && timingsRef.current.timeToRight === undefined) timingsRef.current.timeToRight = Math.round(elapsed);
-
-      window.setTimeout(() => {
-        setTaskId((prev) => {
-          if (prev === "left") {
-            baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
-            taskStartAtRef.current = performance.now();
-            outsideMsRef.current = 0;
-            gyroFailTriggeredRef.current = false;
-            completing = false;
-            return "right";
-          }
-          if (prev === "right") {
-            baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
-            taskStartAtRef.current = performance.now();
-            outsideMsRef.current = 0;
-            gyroFailTriggeredRef.current = false;
-            completing = false;
-            return "steady";
-          }
-
-          const score = scoreHumanConfidence({
-            motionSamples: motionSamplesRef.current,
-            directedTimings: timingsRef.current,
-            stabilityPct,
-            stabilityHoldPct
-          });
-          finish(score);
-          return prev;
-        });
-      }, reduceMotion ? 0 : 260);
-    };
-
-    const tick = (t: number) => {
-      raf = window.requestAnimationFrame(tick);
-      if (t - last < 1000 / 60) return;
-      const dtMs = last ? Math.min(60, t - last) : 16;
-      last = t;
-
-      const s = smoothedRef.current;
-      motionSamplesRef.current.push({ beta: s.beta, gamma: s.gamma, t });
-      if (motionSamplesRef.current.length > 160) motionSamplesRef.current.shift();
-
-      const base = baselineRef.current ?? { beta: s.beta, gamma: s.gamma };
-      const dBeta = s.beta - base.beta;
-      const dGamma = s.gamma - base.gamma;
-
-      if (taskId === "left" || taskId === "right") {
-        const ok = taskId === "left" ? dGamma < -TILT_TASK_THRESHOLD_DEG : dGamma > TILT_TASK_THRESHOLD_DEG;
-        tiltHoldMsRef.current = ok ? tiltHoldMsRef.current + dtMs : 0;
-        tiltHoldMsRef.current = clamp(tiltHoldMsRef.current, 0, TILT_TASK_HOLD_MS);
-        const pct = tiltHoldMsRef.current / TILT_TASK_HOLD_MS;
-        setHoldPct(pct);
-
-        if (tiltHoldMsRef.current >= TILT_TASK_HOLD_MS) {
-          tiltHoldMsRef.current = 0;
-          setHoldPct(0);
-          completeTask(taskId, 0, 0);
-        }
-        return;
+    callRiskEval(newCount).then((updatedRisk) => {
+      const ts = new Date().toISOString();
+      if (updatedRisk.risk_level === "high") {
+        setTrace((prev) => ({ ...prev, lastDecision: "Tilt failed; risk high; escalating to beat", updatedAt: ts }));
+        // Escalate to beat
+        const song = songs && songs.length > 0 ? songs[Math.floor(Math.random() * songs.length)] : null;
+        beatTriggeredRef.current = true;
+        setBeatSong(song);
+        setCurrentStep("beat");
+        setScreen("beat");
+      } else {
+        setTrace((prev) => ({ ...prev, lastDecision: "Tilt failed; risk not high; retrying tilt", updatedAt: ts }));
+        // Re-mount TiltChallenge (fresh RAF + state)
+        setTiltAttemptKey((k) => k + 1);
       }
-
-      // ── Steady task ──────────────────────────────────────────────────────
-      const xTarget = clamp(dGamma * DOT_PX_PER_DEG, -DOT_MAX_OFFSET_PX, DOT_MAX_OFFSET_PX);
-      const yTarget = clamp(dBeta * DOT_PX_PER_DEG, -DOT_MAX_OFFSET_PX, DOT_MAX_OFFSET_PX);
-      const dist = Math.hypot(xTarget, yTarget);
-      const inZone = dist <= HOLD_STEADY_RADIUS_PX;
-
-      setDot((prev) => {
-        const nx = prev.x + (xTarget - prev.x) * 0.18;
-        const ny = prev.y + (yTarget - prev.y) * 0.18;
-        if (Math.abs(prev.x - nx) < 0.2 && Math.abs(prev.y - ny) < 0.2) return prev;
-        return { x: nx, y: ny };
-      });
-
-      setInside(inZone);
-
-      // Track time outside circle — triggers tilt-fail re-evaluation + beat challenge
-      if (!inZone && !gyroFailTriggeredRef.current) {
-        outsideMsRef.current += dtMs;
-        if (outsideMsRef.current >= GYRO_FAIL_SECONDS * 1000) {
-          gyroFailTriggeredRef.current = true;
-          window.cancelAnimationFrame(raf);
-
-          // Increment tilt fail count and re-evaluate risk
-          const newCount = tiltFailCountRef.current + 1;
-          tiltFailCountRef.current = newCount;
-          setTiltFailCount(newCount);
-
-          callRiskEval(newCount).then((updatedRisk) => {
-            if (updatedRisk.risk_level === "high" && newCount >= 1) {
-              // Route to beat challenge
-              const triggered = triggerBeatChallenge();
-              if (!triggered) {
-                outsideMsRef.current = 0;
-                gyroFailTriggeredRef.current = false;
-              }
-            } else {
-              // Medium/low: let user retry tilt
-              outsideMsRef.current = 0;
-              gyroFailTriggeredRef.current = false;
-            }
-          });
-          return;
-        }
-      } else if (inZone) {
-        outsideMsRef.current = 0;
-      }
-
-      stableMsRef.current = inZone
-        ? clamp(stableMsRef.current + dtMs, 0, HOLD_STEADY_TARGET_MS)
-        : clamp(stableMsRef.current - dtMs * 0.6, 0, HOLD_STEADY_TARGET_MS);
-
-      const hold = stableMsRef.current / HOLD_STEADY_TARGET_MS;
-      setHoldPct(hold);
-
-      const stabilityPct = clamp(100 * (1 - dist / HOLD_STEADY_RADIUS_PX), 0, 100);
-      const stabilityHoldPct = hold * 100;
-
-      if (stableMsRef.current >= HOLD_STEADY_TARGET_MS) {
-        stableMsRef.current = 0;
-        setHoldPct(1);
-        completeTask("steady", stabilityPct, stabilityHoldPct);
-      }
-    };
-
-    raf = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(raf);
-  }, [available, callRiskEval, finish, permissionState, reduceMotion, screen, smoothedRef, taskId, triggerBeatChallenge]);
-
-  const completedCount = useMemo(() => {
-    if (screen === "result") return 3;
-    if (screen !== "tasks") return 0;
-    return taskId === "left" ? 0 : taskId === "right" ? 1 : 2;
-  }, [screen, taskId]);
-
-  const overallProgressPct = useMemo(() => {
-    const base = screen === "result" ? 3 : completedCount;
-    const pct = ((base + clamp(holdPct, 0, 1)) / TASKS_TOTAL) * 100;
-    return clamp(pct, 0, 100);
-  }, [completedCount, holdPct, screen]);
+    });
+  }, [callRiskEval, songs]);
 
   useEffect(() => {
     if (screen !== "result") return;
@@ -1050,12 +1325,12 @@ export default function VerificationWizard({
 
   const granted = permissionState === "granted" || motionUnlocked;
 
-  // Beat challenge always follows gyro fail — passing it gives a passing score
+  // Beat challenge always follows tilt failure — passing it gives a passing score
   const handleBeatPass = useCallback(() => {
     setBeatSong(null);
     const score = scoreHumanConfidence({
-      motionSamples: motionSamplesRef.current,
-      directedTimings: timingsRef.current,
+      motionSamples: capturedMotionRef.current.motionSamples,
+      directedTimings: capturedMotionRef.current.directedTimings,
       stabilityPct: 50,
       stabilityHoldPct: 50,
     });
@@ -1063,33 +1338,22 @@ export default function VerificationWizard({
   }, [finish]);
 
   const handleBeatSkip = useCallback(() => {
-    // Skipping the beat challenge (which only appears after gyro fail) goes to result
     setBeatSong(null);
     const score = scoreHumanConfidence({
-      motionSamples: motionSamplesRef.current,
-      directedTimings: timingsRef.current,
+      motionSamples: capturedMotionRef.current.motionSamples,
+      directedTimings: capturedMotionRef.current.directedTimings,
       stabilityPct: 20,
       stabilityHoldPct: 20,
     });
     finish(score);
   }, [finish]);
 
-  // Outside timer display for steady task
-  const outsideSecsRemaining = useMemo(() => {
-    if (screen !== "tasks" || taskId !== "steady" || inside) return null;
-    const remaining = Math.ceil((GYRO_FAIL_SECONDS * 1000 - outsideMsRef.current) / 1000);
-    return remaining;
-  }, [screen, taskId, inside]);
-
-  const currentStep =
-    screen === "intro" ? "preview" :
-    screen === "tasks" ? "tilt" :
-    screen === "beat" ? "beat" : "complete";
+  const debugStepLabel = currentStep;
 
   return (
     <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
       <DebugDrawer
-        currentStep={screen === "tasks" ? `tilt:${taskId}` : currentStep}
+        currentStep={debugStepLabel}
         tiltFailCount={tiltFailCount}
         risk={risk}
         trace={trace}
@@ -1273,29 +1537,29 @@ export default function VerificationWizard({
         ) : null}
 
         {/* ═══════════════════════════════════════════════════════════
-            SCREEN 2 — TASK FLOW
+            SCREEN 2 — TILT CHALLENGE (left → right → steady)
         ═══════════════════════════════════════════════════════════ */}
         {screen === "tasks" ? (
-          <motion.section
-            key="tasks"
-            className="min-h-dvh"
-            style={{ background: "#0f172a" }}
-            initial={reduceMotion ? false : { opacity: 0, y: 16 }}
-            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-            exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
-            transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
-          >
-            <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
-                <div className="flex items-center gap-3">
-                  <TrustChip risk={risk} loading={riskLoading} onDebugClick={() => setDebugOpen(true)} />
-                  <p className="text-[10px] font-medium text-slate-500">
-                    Step {completedCount + 1} of 3
-                  </p>
-                </div>
-              </div>
+          <TiltChallenge
+            key={tiltAttemptKey}
+            smoothedGamma={smoothedGamma}
+            smoothedRef={smoothedRef}
+            reduceMotion={reduceMotion}
+            available={available}
+            permissionState={permissionState}
+            songs={songs}
+            risk={risk}
+            riskLoading={riskLoading}
+            voiceLoading={voiceLoading}
+            voiceText={voiceText}
+            onNarrate={handleNarrate}
+            onDebugClick={() => setDebugOpen(true)}
+            onSuccess={handleTiltSuccess}
+            onFailure={handleTiltFailure}
+          />
+        ) : null}
 
+<<<<<<< HEAD
               <div className="mt-4 space-y-1">
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.p
@@ -1453,8 +1717,23 @@ export default function VerificationWizard({
               </div>
 
               <div className="mt-4">
+=======
+        {/* ═══════════════════════════════════════════════════════════
+            SCREEN 2b — BEAT CHALLENGE (only when tilt failed + risk high)
+        ═══════════════════════════════════════════════════════════ */}
+        {currentStep === "beat" && screen === "beat" ? (
+          beatSong ? (
+            <div key="beat" style={{ position: "relative" }}>
+              <BeatChallenge
+                song={beatSong}
+                onPass={handleBeatPass}
+                onSkip={handleBeatSkip}
+                reduceMotion={reduceMotion}
+              />
+              <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", width: "min(320px, 90vw)", zIndex: 100 }}>
+>>>>>>> d5939e4370a97249bcb0f549cce6f08e6cc44e15
                 <VoiceGuidanceButton
-                  step="tilt"
+                  step="beat"
                   riskLevel={risk?.risk_level ?? "medium"}
                   voiceLoading={voiceLoading}
                   voiceText={voiceText}
@@ -1462,30 +1741,9 @@ export default function VerificationWizard({
                 />
               </div>
             </div>
-          </motion.section>
-        ) : null}
-
-        {/* ═══════════════════════════════════════════════════════════
-            SCREEN 2b — BEAT CHALLENGE
-        ═══════════════════════════════════════════════════════════ */}
-        {screen === "beat" && beatSong ? (
-          <div key="beat" style={{ position: "relative" }}>
-            <BeatChallenge
-              song={beatSong}
-              onPass={handleBeatPass}
-              onSkip={handleBeatSkip}
-              reduceMotion={reduceMotion}
-            />
-            <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", width: "min(320px, 90vw)", zIndex: 100 }}>
-              <VoiceGuidanceButton
-                step="beat"
-                riskLevel={risk?.risk_level ?? "medium"}
-                voiceLoading={voiceLoading}
-                voiceText={voiceText}
-                onNarrate={handleNarrate}
-              />
-            </div>
-          </div>
+          ) : (
+            <BeatPlaceholder key="beat-placeholder" onComplete={handleBeatPass} />
+          )
         ) : null}
 
         {/* ═══════════════════════════════════════════════════════════
