@@ -10,13 +10,13 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#000000'
+  themeColor: '#026cdf'
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="h-full overflow-hidden bg-black">
-      <body className="h-full overflow-hidden antialiased selection:bg-sky-400/30 selection:text-white">
+    <html lang="en" className="h-full">
+      <body className="h-full min-h-dvh antialiased selection:bg-primary/20 selection:text-[var(--color-text)]">
         {children}
       </body>
     </html>

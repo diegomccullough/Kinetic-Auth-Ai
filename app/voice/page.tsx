@@ -1,13 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { RiskLevel } from "@/lib/scoring";
 
+function verifiedHref(returnTo: string) {
+  return returnTo.includes("?") ? `${returnTo}&verified=true` : `${returnTo}?verified=true`;
+}
+
 export default function VoiceVerificationPage() {
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("return") ?? "/";
   const reduceMotion = useReducedMotion();
   const bars = useMemo(() => Array.from({ length: 16 }, (_, i) => i), []);
 
@@ -73,8 +80,8 @@ export default function VoiceVerificationPage() {
   const passed = result ? result.riskLevel !== "high" : false;
 
   return (
-    <main className="h-dvh overflow-hidden px-4 py-4">
-      <div className="mx-auto w-full max-w-[440px]">
+    <main className="min-h-dvh bg-surface px-4 py-4 sm:py-6">
+      <div className="mx-auto w-full max-w-[440px] sm:max-w-verify">
         <div className="relative overflow-hidden rounded-[30px] ring-1 ring-white/10">
           <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(16,185,129,0.18)_0%,rgba(56,189,248,0.14)_32%,rgba(0,0,0,1)_76%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(90%_70%_at_50%_30%,rgba(255,255,255,0.10)_0%,rgba(0,0,0,0)_64%)]" />
@@ -82,11 +89,10 @@ export default function VoiceVerificationPage() {
           <div className="relative px-5 pb-6 pt-6">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold tracking-[0.26em] text-white/60">STEP-UP VERIFICATION</p>
-                <h1 className="mt-2 text-balance text-[28px] font-semibold leading-[1.05] tracking-tight">
-                  Step-up verification
+                <h1 className="text-xl font-semibold leading-tight text-white sm:text-2xl">
+                  Verify with your voice
                 </h1>
-                <p className="mt-2 text-sm text-white/65">We only ask this when risk is elevated.</p>
+                <p className="mt-2 text-sm text-white/70">Say the phrase when prompted.</p>
               </div>
               <Link
                 href="/"
@@ -101,13 +107,8 @@ export default function VoiceVerificationPage() {
               <div className="relative p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold tracking-[0.22em] text-white/60">PROMPT</p>
-                    <p className="mt-2 text-lg font-semibold tracking-tight">Say the phrase</p>
+                    <p className="text-lg font-semibold tracking-tight text-white">Say the phrase</p>
                     <p className="mt-1 text-sm text-white/65">“Neon city, verified.”</p>
-                  </div>
-                  <div className="shrink-0 rounded-2xl bg-white/5 px-3 py-2 ring-1 ring-white/10">
-                    <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">MODEL</p>
-                    <p className="mt-1 text-xs font-semibold tracking-tight text-white/85">Gemini (sim)</p>
                   </div>
                 </div>
 
@@ -294,13 +295,13 @@ export default function VoiceVerificationPage() {
 
             <div className="mt-5 space-y-3">
               <Link
-                href="/verify"
+                href={returnTo ? `/verify?return=${encodeURIComponent(returnTo)}` : "/verify"}
                 className="inline-flex w-full items-center justify-center rounded-2xl bg-transparent px-4 py-3 text-sm font-medium text-white/75 ring-1 ring-white/10 hover:bg-white/5"
               >
                 Back to motion verification
               </Link>
               <Link
-                href="/"
+                href={returnTo}
                 className="inline-flex w-full items-center justify-center rounded-2xl bg-white/10 px-4 py-3 text-sm font-medium text-white ring-1 ring-white/15 hover:bg-white/15"
               >
                 Back to tickets

@@ -1,26 +1,30 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import VerificationWizard from "@/components/VerificationWizard";
 
-export default function VerifyPage() {
+function VerifyPageClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("return") ?? "/";
+
+  const verifiedUrl =
+    returnTo.includes("?") ? `${returnTo}&verified=true` : `${returnTo}?verified=true`;
 
   return (
-    <main className="h-dvh overflow-hidden px-4 py-4">
-      <div className="mx-auto flex h-full w-full max-w-[560px] flex-col">
-        <div className="relative min-h-0 flex-1 overflow-hidden rounded-[30px] ring-1 ring-white/10">
-          <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(56,189,248,0.22)_0%,rgba(99,102,241,0.14)_32%,rgba(0,0,0,1)_76%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(80%_70%_at_50%_25%,rgba(255,255,255,0.10)_0%,rgba(0,0,0,0)_62%)]" />
-
-          <div className="relative h-full overflow-hidden px-5 py-5">
+    <main className="min-h-dvh bg-surface px-4 py-4 sm:py-6">
+      <div className="mx-auto max-w-verify">
+        <div className="overflow-hidden rounded-2xl bg-surface-elevated shadow-lg sm:rounded-3xl">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-4 sm:px-6 sm:py-5">
+            <h1 className="text-lg font-semibold text-white sm:text-xl">Verify your identity</h1>
+            <p className="mt-1 text-sm text-white/70">Required to continue to checkout.</p>
+          </div>
+          <div className="px-4 py-5 sm:px-6 sm:py-6">
             <VerificationWizard
-              onVerified={() => {
-                router.push("/?verified=true");
-              }}
-              onCancel={() => {
-                router.push("/");
-              }}
+              returnTo={returnTo}
+              onVerified={() => router.push(verifiedUrl)}
+              onCancel={() => router.push(returnTo)}
             />
           </div>
         </div>
@@ -29,3 +33,10 @@ export default function VerifyPage() {
   );
 }
 
+export default function VerifyPage() {
+  return (
+    <Suspense fallback={<main className="min-h-dvh bg-surface" />}>
+      <VerifyPageClient />
+    </Suspense>
+  );
+}

@@ -1,21 +1,16 @@
 import Link from "next/link";
-import { DEMO_MODE } from "@/lib/demoMode";
 
 export default function VerifiedPage() {
-  const demo = DEMO_MODE;
   return (
-    <main className="h-dvh overflow-hidden bg-black px-4">
-      <div className="flex h-full items-center justify-center">
-      <div className="mx-auto w-full max-w-[430px] rounded-[28px] bg-white/[0.03] px-5 py-6 ring-1 ring-white/10">
-        <h1 className={["font-semibold tracking-tight", demo ? "text-5xl" : "text-xl"].join(" ")}>Verified</h1>
-        <p className="mt-2 text-sm text-white/70">Success callback fired.</p>
+    <main className="flex min-h-dvh items-center justify-center bg-surface px-4 py-8">
+      <div className="mx-auto w-full max-w-md rounded-2xl bg-surface-elevated p-8 shadow-lg ring-1 ring-slate-200">
+        <h1 className="text-xl font-semibold tracking-tight text-[var(--color-text)]">You’re verified</h1>
         <Link
-          href="/verify"
-          className="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-white/10 px-4 py-3 text-sm font-medium text-white ring-1 ring-white/15 hover:bg-white/15"
+          href="/"
+          className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-primary py-3 text-sm font-semibold text-white hover:bg-primary-hover"
         >
-          Back to verification
+          Back to tickets
         </Link>
-      </div>
       </div>
     </main>
   );
