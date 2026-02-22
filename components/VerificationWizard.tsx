@@ -28,7 +28,7 @@ export type VerificationTrace = {
   updatedAt: string | null;
 };
 
-type CurrentStep = "preview" | "tilt" | "beat" | "complete";
+type CurrentStep = "preview" | "tilt" | "analyzing" | "beat" | "complete";
 
 const RISK_DEFAULT: RiskResult = {
   risk_level: "medium",
@@ -249,7 +249,7 @@ const BEAT_WINDOW_MS = 220;
 /** Number of beats the user must hit to pass the beat challenge */
 const BEATS_REQUIRED = 8;
 
-type Screen = "intro" | "tasks" | "beat" | "result";
+type Screen = "intro" | "tasks" | "analyzing" | "beat" | "result";
 type TaskId = "left" | "right" | "steady";
 
 function ringDashOffset(radius: number, pct: number) {
@@ -371,6 +371,86 @@ function HoldRing({
         transition={{ type: "spring", stiffness: 200, damping: 28, mass: 0.6 }}
       />
     </svg>
+  );
+}
+
+// ─── Analyzing Screen (shown for 1.5 s after tilt failure, before step-up) ───
+function AnalyzingScreen() {
+  const [meterPct, setMeterPct] = useState(0);
+
+  useEffect(() => {
+    // Animate risk meter from 0 → 100 % over ~1200 ms
+    const controls = animate(0, 100, {
+      duration: 1.2,
+      ease: "easeIn",
+      onUpdate: (v) => setMeterPct(Math.round(v)),
+    });
+    return () => controls.stop();
+  }, []);
+
+  const meterColor =
+    meterPct < 40 ? "#22c55e" : meterPct < 70 ? "#f59e0b" : "#ef4444";
+
+  return (
+    <motion.section
+      key="analyzing"
+      className="min-h-dvh flex flex-col items-center justify-center px-6 py-10"
+      style={{ background: "#0f172a" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, scale: 0.97 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="w-full max-w-[380px] flex flex-col items-center gap-8">
+        {/* Label */}
+        <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">
+          KINETICAUTH · RISK ANALYSIS
+        </p>
+
+        {/* Pulsing spinner ring */}
+        <motion.div
+          className="w-16 h-16 rounded-full border-2 border-slate-700 flex items-center justify-center"
+          animate={{ boxShadow: ["0 0 0px #ef444400", "0 0 18px #ef4444aa", "0 0 0px #ef444400"] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <motion.div
+            className="w-8 h-8 rounded-full border-2 border-t-transparent"
+            style={{ borderColor: meterColor, borderTopColor: "transparent" }}
+            animate={{ rotate: 360 }}
+            transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
+          />
+        </motion.div>
+
+        {/* Headline */}
+        <div className="text-center flex flex-col gap-2">
+          <h2 className="text-xl font-bold text-white">Analyzing behavioral signals…</h2>
+          <p className="text-xs text-slate-400 leading-relaxed max-w-[280px] mx-auto">
+            Evaluating motion stability, completion timing, and anomaly signals…
+          </p>
+        </div>
+
+        {/* Risk meter */}
+        <div className="w-full flex flex-col gap-2">
+          <div className="flex justify-between text-[10px] font-semibold tracking-widest text-slate-500 uppercase">
+            <span>Risk Level</span>
+            <motion.span
+              style={{ color: meterColor }}
+              animate={{ opacity: [0.6, 1, 0.6] }}
+              transition={{ duration: 0.8, repeat: Infinity }}
+            >
+              {meterPct < 40 ? "LOW" : meterPct < 70 ? "MEDIUM" : "HIGH"}
+            </motion.span>
+          </div>
+          <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+            <motion.div
+              className="h-full rounded-full"
+              style={{ width: `${meterPct}%`, background: meterColor }}
+              transition={{ duration: 0.05 }}
+            />
+          </div>
+        </div>
+      </div>
+    </motion.section>
   );
 }
 
@@ -1248,20 +1328,30 @@ export default function VerificationWizard({
     tiltFailCountRef.current = newCount;
     setTiltFailCount(newCount);
 
+    // Enter ANALYZING state immediately — show analysis screen while risk eval runs
+    setCurrentStep("analyzing");
+    setScreen("analyzing");
+
     callRiskEval(newCount).then((updatedRisk) => {
       const ts = new Date().toISOString();
       if (updatedRisk.risk_level === "high") {
         setTrace((prev) => ({ ...prev, lastDecision: "Tilt failed; risk high; escalating to beat", updatedAt: ts }));
-        // Escalate to beat
-        const song = songs && songs.length > 0 ? songs[Math.floor(Math.random() * songs.length)] : null;
-        beatTriggeredRef.current = true;
-        setBeatSong(song);
-        setCurrentStep("beat");
-        setScreen("beat");
+        // Hold ANALYZING for at least 1500 ms so the meter animation completes
+        setTimeout(() => {
+          const song = songs && songs.length > 0 ? songs[Math.floor(Math.random() * songs.length)] : null;
+          beatTriggeredRef.current = true;
+          setBeatSong(song);
+          setCurrentStep("beat");
+          setScreen("beat");
+        }, 1500);
       } else {
         setTrace((prev) => ({ ...prev, lastDecision: "Tilt failed; risk not high; retrying tilt", updatedAt: ts }));
-        // Re-mount TiltChallenge (fresh RAF + state)
-        setTiltAttemptKey((k) => k + 1);
+        // Brief ANALYZING pause before retrying tilt
+        setTimeout(() => {
+          setCurrentStep("tilt");
+          setScreen("tasks");
+          setTiltAttemptKey((k) => k + 1);
+        }, 1500);
       }
     });
   }, [callRiskEval, songs]);
@@ -1521,7 +1611,14 @@ export default function VerificationWizard({
         ) : null}
 
         {/* ═══════════════════════════════════════════════════════════
-            SCREEN 2b — BEAT CHALLENGE (only when tilt failed + risk high)
+            SCREEN 2b — ANALYZING (transitional, 1.5 s after tilt failure)
+        ═══════════════════════════════════════════════════════════ */}
+        {currentStep === "analyzing" && screen === "analyzing" ? (
+          <AnalyzingScreen key="analyzing" />
+        ) : null}
+
+        {/* ═══════════════════════════════════════════════════════════
+            SCREEN 2c — BEAT CHALLENGE (only when tilt failed + risk high)
         ═══════════════════════════════════════════════════════════ */}
         {currentStep === "beat" && screen === "beat" ? (
           beatSong ? (
