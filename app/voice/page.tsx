@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { RiskLevel } from "@/lib/scoring";
@@ -12,7 +12,7 @@ function verifiedHref(returnTo: string) {
   return returnTo.includes("?") ? `${returnTo}&verified=true` : `${returnTo}?verified=true`;
 }
 
-export default function VoiceVerificationPage() {
+function VoiceVerificationPageClient() {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("return") ?? "/";
   const reduceMotion = useReducedMotion();
@@ -80,6 +80,7 @@ export default function VoiceVerificationPage() {
   const passed = result ? result.riskLevel !== "high" : false;
 
   return (
+<<<<<<< HEAD
     <main className="min-h-dvh bg-surface px-4 py-4 sm:py-6">
       <div className="mx-auto w-full max-w-[440px] sm:max-w-verify">
         <div className="relative overflow-hidden rounded-[30px] ring-1 ring-white/10">
@@ -88,6 +89,11 @@ export default function VoiceVerificationPage() {
 
           <div className="relative px-5 pb-6 pt-6">
             <div className="flex items-center justify-between gap-3">
+=======
+    <main className="app-shell">
+      <div className="screen-card">
+        <div className="flex items-center justify-between gap-3">
+>>>>>>> c262930661f37671db8467cb71be9d0c467d4414
               <div>
                 <h1 className="text-xl font-semibold leading-tight text-white sm:text-2xl">
                   Verify with your voice
@@ -309,6 +315,14 @@ export default function VoiceVerificationPage() {
             </div>
       </div>
     </main>
+  );
+}
+
+export default function VoiceVerificationPage() {
+  return (
+    <Suspense fallback={<main className="min-h-dvh bg-black" />}>
+      <VoiceVerificationPageClient />
+    </Suspense>
   );
 }
 
