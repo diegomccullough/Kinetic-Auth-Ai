@@ -1211,20 +1211,6 @@ export default function VerificationWizard({
     scoreHumanConfidence({ motionSamples: [], directedTimings: undefined, stabilityPct: 0, stabilityHoldPct: 0 })
   );
 
-  const cueLine = useMemo(() => {
-    if (screen !== "tasks") return "";
-    if (taskId === "left") return "Tilt your phone left until the ring fills…";
-    if (taskId === "right") return "Now tilt your phone right…";
-    return "Tilt the ball into the circle and hold it there…";
-  }, [screen, taskId]);
-
-  const stepTitle = useMemo(() => {
-    if (screen !== "tasks") return "";
-    if (taskId === "left") return "Step 1 — Tilt the phone left";
-    if (taskId === "right") return "Step 2 — Tilt the phone right";
-    return "Step 3 — Tilt the ball into the circle";
-  }, [screen, taskId]);
-
   // Pick a random song for the beat challenge
   const pickSong = useCallback((): EventSong | null => {
     if (!songs || songs.length === 0) return null;
