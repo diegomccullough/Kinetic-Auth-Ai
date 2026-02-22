@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { RiskLevel } from "@/lib/scoring";
@@ -12,7 +12,7 @@ function verifiedHref(returnTo: string) {
   return returnTo.includes("?") ? `${returnTo}&verified=true` : `${returnTo}?verified=true`;
 }
 
-export default function VoiceVerificationPage() {
+function VoiceVerificationPageClient() {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("return") ?? "/";
   const reduceMotion = useReducedMotion();
@@ -304,6 +304,14 @@ export default function VoiceVerificationPage() {
             </div>
       </div>
     </main>
+  );
+}
+
+export default function VoiceVerificationPage() {
+  return (
+    <Suspense fallback={<main className="min-h-dvh bg-black" />}>
+      <VoiceVerificationPageClient />
+    </Suspense>
   );
 }
 
