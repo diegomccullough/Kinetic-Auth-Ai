@@ -64,23 +64,20 @@ export async function POST(request: NextRequest) {
   const risk_level = body?.risk_level ?? "low";
   const accessibility = body?.accessibility ?? {};
 
+  if (
+    !process.env.GEMINI_API_KEY ||
+    !process.env.ELEVENLABS_API_KEY ||
+    !process.env.ELEVENLABS_VOICE_ID
+  ) {
+    return NextResponse.json(
+      { error: "Missing server environment variables" },
+      { status: 500 }
+    );
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   const elevenKey = process.env.ELEVENLABS_API_KEY;
   const voiceId = process.env.ELEVENLABS_VOICE_ID;
-
-  if (!apiKey || !elevenKey) {
-    return NextResponse.json(
-      { error: "Missing API keys" },
-      { status: 500 }
-    );
-  }
-
-  if (!voiceId) {
-    return NextResponse.json(
-      { error: "Missing ELEVENLABS_VOICE_ID" },
-      { status: 500 }
-    );
-  }
 
   let text: string;
   try {

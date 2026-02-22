@@ -7,6 +7,219 @@ import { useDeviceOrientation } from "@/lib/useDeviceOrientation";
 import PhoneTiltPreview from "@/components/PhoneTiltPreview";
 import type { EventSong } from "@/lib/events";
 
+// ─── AI Risk Types ────────────────────────────────────────────────────────────
+type RiskLevel = "low" | "medium" | "high";
+type StepUp = "none" | "tilt" | "beat";
+
+type RiskResult = {
+  risk_level: RiskLevel;
+  reason: string;
+  step_up: StepUp;
+};
+
+const RISK_DEFAULT: RiskResult = {
+  risk_level: "medium",
+  reason: "Defaulting to standard verification.",
+  step_up: "tilt",
+};
+
+const STEP_UP_LABEL: Record<StepUp, string> = {
+  none: "Auto-Pass",
+  tilt: "Tilt Challenge",
+  beat: "Beat Challenge",
+};
+
+const RISK_COLOR: Record<RiskLevel, string> = {
+  low: "#34d399",
+  medium: "#fbbf24",
+  high: "#f87171",
+};
+
+// ─── AI Trust Panel ───────────────────────────────────────────────────────────
+function AITrustPanel({
+  risk,
+  loading,
+}: {
+  risk: RiskResult | null;
+  loading: boolean;
+}) {
+  const r = risk ?? RISK_DEFAULT;
+  const color = RISK_COLOR[r.risk_level];
+  const label = r.risk_level.charAt(0).toUpperCase() + r.risk_level.slice(1);
+
+  return (
+    <div
+      style={{
+        borderRadius: 12,
+        border: "1px solid rgba(51,65,85,0.8)",
+        background: "rgba(15,23,42,0.85)",
+        padding: "10px 14px",
+        width: "100%",
+        boxSizing: "border-box",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+        <div
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: loading ? "#475569" : color,
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: "0.12em",
+            color: "#64748b",
+            textTransform: "uppercase",
+          }}
+        >
+          AI Trust Engine
+        </span>
+      </div>
+      {loading ? (
+        <p style={{ fontSize: 11, color: "#475569", margin: 0 }}>Evaluating risk…</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>Risk Level</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color }}>{label}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>Verification Mode</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#cbd5e1" }}>
+              {STEP_UP_LABEL[r.step_up]}
+            </span>
+          </div>
+          <p
+            style={{
+              fontSize: 10,
+              color: "#64748b",
+              margin: "3px 0 0",
+              lineHeight: 1.5,
+            }}
+          >
+            {r.reason}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Voice Guidance Button ────────────────────────────────────────────────────
+function VoiceGuidanceButton({
+  currentStep,
+  riskLevel,
+  disabled,
+}: {
+  currentStep: "tilt" | "beat" | "none";
+  riskLevel: RiskLevel;
+  disabled?: boolean;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [fallbackText, setFallbackText] = useState<string | null>(null);
+
+  const handleClick = useCallback(async () => {
+    if (loading || disabled) return;
+    setLoading(true);
+    setFallbackText(null);
+    try {
+      const res = await fetch("/api/ai/narrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          step: currentStep,
+          risk_level: riskLevel,
+          accessibility: {
+            reduce_motion: false,
+            screen_reader: false,
+            voice_guidance: true,
+          },
+        }),
+      });
+
+      const contentType = res.headers.get("Content-Type") ?? "";
+      if (contentType.includes("audio")) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.play().catch(() => {
+          // Autoplay blocked — silently ignore
+        });
+        audio.addEventListener("ended", () => URL.revokeObjectURL(url));
+      } else {
+        const json = await res.json();
+        if (typeof json?.text === "string") {
+          setFallbackText(json.text);
+        }
+      }
+    } catch {
+      // Network error — fail silently
+    } finally {
+      setLoading(false);
+    }
+  }, [loading, disabled, currentStep, riskLevel]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={loading || disabled}
+        style={{
+          height: 36,
+          borderRadius: 10,
+          border: "1px solid rgba(51,65,85,0.8)",
+          background: "rgba(30,41,59,0.8)",
+          color: loading || disabled ? "#475569" : "#93c5fd",
+          fontSize: 12,
+          fontWeight: 500,
+          cursor: loading || disabled ? "default" : "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          width: "100%",
+          transition: "color 0.15s",
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="M8 1a3 3 0 0 1 3 3v4a3 3 0 1 1-6 0V4a3 3 0 0 1 3-3Z"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+          <path
+            d="M3 8a5 5 0 0 0 10 0M8 13v2"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </svg>
+        {loading ? "Loading…" : "Enable AI Voice Guidance"}
+      </button>
+      {fallbackText ? (
+        <p
+          style={{
+            fontSize: 11,
+            color: "#94a3b8",
+            textAlign: "center",
+            lineHeight: 1.5,
+            margin: 0,
+          }}
+        >
+          {fallbackText}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
@@ -454,6 +667,39 @@ export default function VerificationWizard({
   const { smoothedBeta, smoothedGamma, smoothedRef, available, permissionState, requestPermission } =
     useDeviceOrientation();
 
+  // ── AI Risk Evaluation ────────────────────────────────────────────────────
+  const [riskResult, setRiskResult] = useState<RiskResult | null>(null);
+  const [riskLoading, setRiskLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRiskLoading(true);
+    fetch("/api/risk/evaluate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        traffic_load: 0.8,
+        motion_entropy_score: 0.25,
+        interaction_latency_variance: 0.3,
+        shake_accuracy: 0.6,
+        device_type: "mobile",
+      }),
+    })
+      .then((res) => res.json())
+      .then((data: RiskResult) => {
+        if (!cancelled) setRiskResult(data);
+      })
+      .catch(() => {
+        if (!cancelled) setRiskResult(RISK_DEFAULT);
+      })
+      .finally(() => {
+        if (!cancelled) setRiskLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const activeStepUp: StepUp = riskResult?.step_up ?? "tilt";
+
   const [screen, setScreen] = useState<Screen>("intro");
   const [motionUnlocked, setMotionUnlocked] = useState(false);
   const [taskId, setTaskId] = useState<TaskId>("left");
@@ -514,7 +760,35 @@ export default function VerificationWizard({
     return true;
   }, [pickSong]);
 
+  const finish = useCallback((score: ScoreBreakdown) => {
+    setFinalScore(score);
+    setConfidenceTarget(87 + Math.floor(Math.random() * 10));
+    setScreen("result");
+  }, []);
+
   const advanceToTasks = useCallback(() => {
+    const step = riskResult?.step_up ?? "tilt";
+
+    // Auto-pass: skip verification entirely
+    if (step === "none") {
+      const score = scoreHumanConfidence({
+        motionSamples: [],
+        directedTimings: undefined,
+        stabilityPct: 100,
+        stabilityHoldPct: 100,
+      });
+      finish(score);
+      return;
+    }
+
+    // Beat challenge: go straight to beat screen
+    if (step === "beat") {
+      const triggered = triggerBeatChallenge();
+      if (triggered) return;
+      // No songs available — fall back to tilt flow
+    }
+
+    // Default: tilt challenge flow
     setScreen("tasks");
     setTaskId("left");
     timingsRef.current = {};
@@ -529,13 +803,7 @@ export default function VerificationWizard({
     setInside(false);
     setHoldPct(0);
     setPulseKey((k) => k + 1);
-  }, [smoothedRef]);
-
-  const finish = useCallback((score: ScoreBreakdown) => {
-    setFinalScore(score);
-    setConfidenceTarget(87 + Math.floor(Math.random() * 10));
-    setScreen("result");
-  }, []);
+  }, [riskResult, finish, triggerBeatChallenge, smoothedRef]);
 
   useEffect(() => {
     if (screen !== "tasks") return;
@@ -833,6 +1101,17 @@ export default function VerificationWizard({
               Move your phone to see real-time orientation tracking.
             </p>
 
+            {/* AI Trust Panel */}
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                width: "min(320px, 90vw)",
+              }}
+            >
+              <AITrustPanel risk={riskResult} loading={riskLoading} />
+            </div>
+
             <div
               style={{
                 position: "relative",
@@ -841,6 +1120,15 @@ export default function VerificationWizard({
                 marginBottom: "calc(20px + env(safe-area-inset-bottom, 0px))"
               }}
             >
+              {/* Voice Guidance */}
+              <div style={{ marginBottom: 10 }}>
+                <VoiceGuidanceButton
+                  currentStep={activeStepUp === "beat" ? "beat" : activeStepUp === "none" ? "none" : "tilt"}
+                  riskLevel={riskResult?.risk_level ?? "medium"}
+                  disabled={riskLoading}
+                />
+              </div>
+
               {granted ? (
                 <motion.button
                   type="button"
@@ -926,7 +1214,11 @@ export default function VerificationWizard({
                 </p>
               </div>
 
-              <div className="mt-6 space-y-1">
+              <div className="mt-4">
+                <AITrustPanel risk={riskResult} loading={riskLoading} />
+              </div>
+
+              <div className="mt-4 space-y-1">
                 <AnimatePresence mode="popLayout" initial={false}>
                   <motion.p
                     key={stepTitle}
@@ -1080,6 +1372,13 @@ export default function VerificationWizard({
 
               <div className="mt-6">
                 <Stepper completed={completedCount} />
+              </div>
+
+              <div className="mt-4">
+                <VoiceGuidanceButton
+                  currentStep="tilt"
+                  riskLevel={riskResult?.risk_level ?? "medium"}
+                />
               </div>
             </div>
           </motion.section>
