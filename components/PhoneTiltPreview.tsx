@@ -146,7 +146,7 @@ export default function PhoneTiltPreview({
   return (
     <div
       ref={rootRef}
-      className="relative mx-auto h-full w-full overflow-hidden rounded-[28px] ring-1 ring-white/10"
+      className="relative h-full w-full rounded-[28px] ring-1 ring-white/10"
       style={{ boxShadow: baseShadow }}
     >
       <div ref={bgRef} className="absolute inset-0 will-change-transform">
