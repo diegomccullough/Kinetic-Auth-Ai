@@ -146,7 +146,7 @@ export default function PhoneTiltPreview({
   return (
     <div
       ref={rootRef}
-      className="relative h-full w-full rounded-[28px] ring-1 ring-white/10"
+      className="absolute inset-0 rounded-[28px] ring-1 ring-white/10"
       style={{ boxShadow: baseShadow }}
     >
       <div ref={bgRef} className="absolute inset-0 will-change-transform">
@@ -169,8 +169,7 @@ export default function PhoneTiltPreview({
           className="relative select-none"
           style={{
             width: "100%",
-            maxWidth: "min(80vw, 360px)",
-            aspectRatio: "1 / 1.9",
+            height: "100%",
             transformStyle: "preserve-3d",
             transformOrigin: "center center",
             willChange: "transform"

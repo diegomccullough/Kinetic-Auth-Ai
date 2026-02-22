@@ -88,7 +88,7 @@ function DebugDrawer({
 }) {
   const r = risk ?? RISK_DEFAULT;
   return (
-    <div style={{ position: "fixed", top: 12, right: 12, zIndex: 9999 }}>
+    <div className="fixed right-4 top-20 z-50">
       <button
         type="button"
         onClick={open ? onClose : onOpen}
@@ -101,10 +101,10 @@ function DebugDrawer({
         {open ? "✕ Debug" : "Debug"}
       </button>
       {open && (
-      <div style={{
+      <div className="max-h-[80vh] overflow-y-auto" style={{
         marginTop: 6, background: "rgba(10,15,28,0.97)", border: "1px solid rgba(51,65,85,0.8)",
-        borderRadius: 12, padding: "12px 14px", width: 280, maxHeight: "80dvh",
-        overflowY: "auto", fontSize: 10, color: "#94a3b8", lineHeight: 1.6,
+        borderRadius: 12, padding: "12px 14px", width: 280,
+        fontSize: 10, color: "#94a3b8", lineHeight: 1.6,
       }}>
         <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", color: "#475569", textTransform: "uppercase" }}>
           AI Debug Trace
@@ -920,14 +920,14 @@ function TiltChallenge({
   return (
     <motion.section
       key="tasks"
-      className="min-h-dvh"
+      className="min-h-[100dvh] overflow-hidden w-full"
       style={{ background: "#0f172a" }}
       initial={reduceMotion ? false : { opacity: 0, y: 16 }}
       animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
       exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
       transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
     >
-      <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
+      <div className="relative mx-auto flex min-h-[100dvh] w-full max-w-[430px] flex-col px-6 py-10">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
           <div className="flex items-center gap-3">
@@ -970,9 +970,9 @@ function TiltChallenge({
               ? "border-emerald-700/40 bg-slate-800/60"
               : "border-slate-700/50 bg-slate-800/60",
           ].join(" ")}
-          style={{ height: "52dvh", minHeight: 320, maxHeight: 480 }}
+          style={{ minHeight: 320 }}
         >
-          <div className="relative grid h-full place-items-center p-6">
+          <div className="relative grid place-items-center p-6">
             <AnimatePresence mode="popLayout" initial={false}>
               {taskId === "left" || taskId === "right" ? (
                 <motion.div
@@ -983,12 +983,10 @@ function TiltChallenge({
                   exit={reduceMotion ? undefined : { opacity: 0 }}
                   transition={reduceMotion ? undefined : { duration: 0.2 }}
                 >
-                  <div className="relative grid place-items-center">
-                    <div className="relative h-[180px] w-[180px]">
-                      <HoldRing pct01={holdPct} radius={70} strokeWidth={8} color="rgba(96,165,250,0.9)" />
-                      <div className="absolute inset-0 grid place-items-center">
-                        <ArrowGlyph direction={taskId} />
-                      </div>
+                  <div className="relative w-full max-w-[320px] aspect-square mx-auto">
+                    <HoldRing pct01={holdPct} radius={70} strokeWidth={8} color="rgba(96,165,250,0.9)" />
+                    <div className="absolute inset-0 grid place-items-center">
+                      <ArrowGlyph direction={taskId} />
                     </div>
                   </div>
                   <div className="w-full px-4 space-y-1.5">
@@ -1014,32 +1012,30 @@ function TiltChallenge({
                   exit={reduceMotion ? undefined : { opacity: 0 }}
                   transition={reduceMotion ? undefined : { duration: 0.2 }}
                 >
-                  <div className="relative grid place-items-center">
-                    <div className="relative h-[180px] w-[180px]">
-                      <HoldRing
-                        pct01={holdPct}
-                        color={inside ? "rgba(52,211,153,0.9)" : "rgba(148,163,184,0.5)"}
-                        radius={74}
-                        strokeWidth={8}
-                      />
-                      <div className="absolute inset-0 grid place-items-center">
-                        <div className="relative h-[86%] w-[86%]">
-                          <div
-                            className={[
-                              "absolute left-1/2 top-1/2 h-[96px] w-[96px] -translate-x-1/2 -translate-y-1/2 rounded-full border",
-                              inside ? "border-emerald-500/40" : "border-slate-600/50",
-                            ].join(" ")}
-                            aria-hidden="true"
-                          />
-                          <motion.div
-                            className={[
-                              "absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full",
-                              inside ? "bg-emerald-400" : "bg-blue-400",
-                            ].join(" ")}
-                            animate={{ x: dot.x, y: dot.y, scale: inside ? 1.1 : 1 }}
-                            transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.25 }}
-                          />
-                        </div>
+                  <div className="relative w-full max-w-[320px] aspect-square mx-auto">
+                    <HoldRing
+                      pct01={holdPct}
+                      color={inside ? "rgba(52,211,153,0.9)" : "rgba(148,163,184,0.5)"}
+                      radius={74}
+                      strokeWidth={8}
+                    />
+                    <div className="absolute inset-0 grid place-items-center">
+                      <div className="relative h-[86%] w-[86%]">
+                        <div
+                          className={[
+                            "absolute left-1/2 top-1/2 h-[96px] w-[96px] -translate-x-1/2 -translate-y-1/2 rounded-full border",
+                            inside ? "border-emerald-500/40" : "border-slate-600/50",
+                          ].join(" ")}
+                          aria-hidden="true"
+                        />
+                        <motion.div
+                          className={[
+                            "absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full",
+                            inside ? "bg-emerald-400" : "bg-blue-400",
+                          ].join(" ")}
+                          animate={{ x: dot.x, y: dot.y, scale: inside ? 1.1 : 1 }}
+                          transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.25 }}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1146,6 +1142,7 @@ export default function VerificationWizard({
 
   const [currentStep, setCurrentStep] = useState<CurrentStep>("preview");
   const [screen, setScreen] = useState<Screen>("intro");
+  const [debugOpen, setDebugOpen] = useState(false);
 
   const callRiskEval = useCallback(async (failCount: number): Promise<RiskResult> => {
     const payload = { ...DEMO_RISK_PAYLOAD, tilt_fail_count: failCount };
@@ -1314,7 +1311,17 @@ export default function VerificationWizard({
   const debugStepLabel = currentStep;
 
   return (
-    <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
+    <>
+    <DebugDrawer
+      currentStep={debugStepLabel}
+      tiltFailCount={tiltFailCount}
+      risk={risk}
+      trace={trace}
+      open={debugOpen}
+      onOpen={() => setDebugOpen(true)}
+      onClose={() => setDebugOpen(false)}
+    />
+    <main className="min-h-[100dvh] flex flex-col items-center justify-start overflow-hidden text-white" style={{ background: "#0f172a" }}>
       <AnimatePresence mode="popLayout" initial={false}>
 
         {/* ═══════════════════════════════════════════════════════════
@@ -1324,12 +1331,12 @@ export default function VerificationWizard({
           <motion.section
             key="intro"
             style={{
-              width: "100vw",
-              height: "100dvh",
+              width: "100%",
+              minHeight: "100dvh",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
+              justifyContent: "flex-start",
               padding: "40px 20px",
               gap: 28,
               position: "relative",
@@ -1370,21 +1377,22 @@ export default function VerificationWizard({
               style={{
                 position: "relative",
                 zIndex: 1,
-                flexGrow: 1,
+                width: "100%",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                minHeight: 0
               }}
             >
-              <div style={{ position: "relative", width: 320, height: 640, flexShrink: 0 }}>
-                <PhoneTiltPreview
-                  beta={granted ? smoothedBeta : 0}
-                  gamma={granted ? smoothedGamma : 0}
-                  reduceMotion={!granted || !!reduceMotion}
-                  variant="cinematic"
-                  showBadge
-                />
+              <div className="w-full max-w-[380px] mx-auto px-4">
+                <div className="relative w-full aspect-[9/19] mx-auto">
+                  <PhoneTiltPreview
+                    beta={granted ? smoothedBeta : 0}
+                    gamma={granted ? smoothedGamma : 0}
+                    reduceMotion={!granted || !!reduceMotion}
+                    variant="cinematic"
+                    showBadge
+                  />
+                </div>
               </div>
             </div>
 
@@ -1545,14 +1553,14 @@ export default function VerificationWizard({
         {screen === "result" ? (
           <motion.section
             key="result"
-            className="min-h-dvh"
+            className="min-h-[100dvh] overflow-hidden w-full"
             style={{ background: "#0f172a" }}
             initial={reduceMotion ? false : { opacity: 0, y: 16 }}
             animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
             exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
             transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
           >
-            <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
+            <div className="relative mx-auto flex min-h-[100dvh] w-full max-w-[430px] flex-col px-6 py-10">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
               </div>
@@ -1657,5 +1665,6 @@ export default function VerificationWizard({
 
       </AnimatePresence>
     </main>
+    </>
   );
 }
