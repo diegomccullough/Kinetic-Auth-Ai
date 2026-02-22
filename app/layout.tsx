@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -6,10 +6,19 @@ export const metadata: Metadata = {
   description: 'Mobile-first verification'
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#000000'
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-dvh antialiased">{children}</body>
+    <html lang="en" className="h-full bg-black">
+      <body className="min-h-dvh antialiased selection:bg-sky-400/30 selection:text-white">
+        {children}
+      </body>
     </html>
   );
 }
