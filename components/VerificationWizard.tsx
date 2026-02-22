@@ -74,8 +74,7 @@ function Stepper({ completed }: { completed: number }) {
               className="grid h-11 w-11 place-items-center rounded-full ring-1"
               style={{
                 background: filled ? "#22D3EE" : "rgba(0,0,0,0.4)",
-                color: filled ? "#000" : "rgba(255,255,255,0.6)",
-                ringColor: filled ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.12)"
+                color: filled ? "#000" : "rgba(255,255,255,0.6)"
               }}
               initial={false}
               animate={{
