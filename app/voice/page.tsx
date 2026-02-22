@@ -102,7 +102,7 @@ function VoiceVerificationPageClient() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-lg font-semibold tracking-tight text-white">Say the phrase</p>
-                <p className="mt-1 text-sm text-white/65">"Neon city, verified."</p>
+                <p className="mt-1 text-sm text-white/65">&ldquo;Neon city, verified.&rdquo;</p>
               </div>
             </div>
 
