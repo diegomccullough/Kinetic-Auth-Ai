@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
+import AnimatedNumber from "@/components/AnimatedNumber";
+import { DEMO_MODE } from "@/lib/demoMode";
 
 type Stage = "countdown" | "onsale" | "queue" | "locked";
 
@@ -29,6 +31,7 @@ export default function TicketOnSaleDemo() {
   const [queuePos, setQueuePos] = useState(1247);
   const [queuePulse, setQueuePulse] = useState(0);
   const [lockedProgress, setLockedProgress] = useState(0);
+  const [scarcityLeft, setScarcityLeft] = useState(97);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 200);
@@ -48,6 +51,15 @@ export default function TicketOnSaleDemo() {
       setQueuePulse((p) => p + 1);
       setQueuePos((p) => Math.max(12, p - (10 + Math.floor(Math.random() * 18))));
     }, 450);
+    return () => window.clearInterval(id);
+  }, [stage]);
+
+  useEffect(() => {
+    if (!DEMO_MODE) return;
+    if (stage !== "onsale" && stage !== "queue") return;
+    const id = window.setInterval(() => {
+      setScarcityLeft((n) => Math.max(0, n - (Math.random() > 0.6 ? 1 : 0)));
+    }, 900);
     return () => window.clearInterval(id);
   }, [stage]);
 
@@ -124,11 +136,21 @@ export default function TicketOnSaleDemo() {
                 <div className="mt-4">
                   <div className="flex items-center justify-between text-xs text-white/55">
                     <span>Demand</span>
-                    <span className="tabular-nums">
-                      {stage === "queue" ? `#${queuePos.toLocaleString()}` : stage === "locked" ? "Verification" : "Live"}
-                    </span>
+                  <span className="tabular-nums">
+                    {stage === "queue" ? (
+                      DEMO_MODE ? (
+                        <AnimatedNumber value={queuePos} duration={0.45} format={(n) => `#${Math.round(n).toLocaleString()}`} />
+                      ) : (
+                        `#${queuePos.toLocaleString()}`
+                      )
+                    ) : stage === "locked" ? (
+                      "Verification"
+                    ) : (
+                      "Live"
+                    )}
+                  </span>
                   </div>
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <div className={["mt-2 w-full overflow-hidden rounded-full bg-white/10", DEMO_MODE ? "h-2" : "h-1.5"].join(" ")}>
                     <motion.div
                       className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-fuchsia-400"
                       initial={false}
@@ -153,7 +175,20 @@ export default function TicketOnSaleDemo() {
                   <div>
                     <p className="text-xs font-semibold tracking-[0.22em] text-white/60">DROP WINDOW</p>
                     <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
-                      {stage === "countdown" ? formatMmSs(msToSale) : "LIVE"}
+                      {stage === "countdown" && DEMO_MODE ? (
+                        <motion.span
+                          className="bg-gradient-to-r from-sky-200 via-white to-sky-200 bg-clip-text text-transparent"
+                          style={{ backgroundSize: "220% 100%" }}
+                          animate={{ backgroundPosition: ["0% 0%", "220% 0%"] }}
+                          transition={{ duration: 1.25, repeat: Infinity, ease: "linear" }}
+                        >
+                          {formatMmSs(msToSale)}
+                        </motion.span>
+                      ) : stage === "countdown" ? (
+                        formatMmSs(msToSale)
+                      ) : (
+                        "LIVE"
+                      )}
                     </p>
                     <p className="mt-1 text-sm text-white/65">
                       {stage === "countdown"
@@ -169,7 +204,15 @@ export default function TicketOnSaleDemo() {
                   <div className="text-right">
                     <p className="text-xs font-semibold tracking-[0.22em] text-white/60">PRICE</p>
                     <p className="mt-1 text-2xl font-semibold tracking-tight">$89</p>
-                    <p className="mt-1 text-xs text-white/55">Incl. fees</p>
+                    {DEMO_MODE ? (
+                      <p className="mt-1 text-xs text-white/55">
+                        <span className="text-white/70">Only </span>
+                        <AnimatedNumber value={scarcityLeft} duration={0.5} className="tabular-nums text-white" />
+                        <span className="text-white/70"> left</span>
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-white/55">Incl. fees</p>
+                    )}
                   </div>
                 </div>
               </div>

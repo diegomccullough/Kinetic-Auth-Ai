@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
+import { DEMO_MODE } from "@/lib/demoMode";
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -78,8 +79,9 @@ export default function PhoneTiltPreview({
       smoothed.current.beta = nextBeta;
       smoothed.current.gamma = nextGamma;
 
-      const rx = -nextBeta; // tilt forward rotates screen "down"
-      const ry = nextGamma;
+      const tiltMult = DEMO_MODE ? 1.5 : 1;
+      const rx = -nextBeta * tiltMult; // visual exaggeration only
+      const ry = nextGamma * tiltMult;
 
       phone.style.transformOrigin = "center center";
       phone.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg)`;
@@ -87,15 +89,16 @@ export default function PhoneTiltPreview({
       const mag = Math.sqrt(rx * rx + ry * ry);
       const mag01 = clamp(mag / 28, 0, 1);
 
-      const glow = 0.10 + mag01 * 0.22;
+      const glow = (DEMO_MODE ? 0.16 : 0.10) + mag01 * (DEMO_MODE ? 0.34 : 0.22);
       const shadowX = clamp(ry * 0.55, -14, 14);
       const shadowY = 18 + clamp(rx * 0.35, -10, 10);
       const blur = 62 + mag01 * 54;
 
       root.style.boxShadow = `${shadowX}px ${shadowY}px ${blur}px rgba(0,0,0,0.62), 0 0 90px rgba(56,189,248,${glow})`;
 
-      const px = clamp(-ry * 0.6, -14, 14);
-      const py = clamp(-rx * 0.5, -12, 12);
+      const bgMult = DEMO_MODE ? 1.3 : 1;
+      const px = clamp(-ry * 0.6 * bgMult, -18, 18);
+      const py = clamp(-rx * 0.5 * bgMult, -16, 16);
       bg.style.transform = `translate3d(${px}px, ${py}px, 0)`;
     };
 
@@ -118,6 +121,17 @@ export default function PhoneTiltPreview({
         <div className="absolute inset-0 bg-[radial-gradient(90%_90%_at_50%_25%,rgba(56,189,248,0.22)_0%,rgba(99,102,241,0.14)_32%,rgba(0,0,0,0)_72%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_65%_65%,rgba(16,185,129,0.14)_0%,rgba(0,0,0,0)_58%)] opacity-80" />
       </div>
+
+      {DEMO_MODE ? (
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(120% 100% at 50% 35%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.48) 70%, rgba(0,0,0,0.82) 100%)"
+          }}
+          aria-hidden="true"
+        />
+      ) : null}
 
       <div className="absolute inset-0 grid place-items-center p-4">
         <div

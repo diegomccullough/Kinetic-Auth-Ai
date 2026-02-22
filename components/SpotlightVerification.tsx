@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DEMO_MODE } from "@/lib/demoMode";
 
 type SpotlightVerificationProps = {
   onVerified: () => void;
@@ -104,10 +105,21 @@ function tryStartAmbientAudio(): AmbientAudioHandle | null {
   }
 }
 
+function vibrate(pattern: number | number[]) {
+  try {
+    if (typeof navigator === "undefined") return;
+    if (typeof navigator.vibrate !== "function") return;
+    navigator.vibrate(pattern);
+  } catch {
+    // ignore
+  }
+}
+
 export default function SpotlightVerification({
   onVerified,
   onUseVoiceVerificationInstead
 }: SpotlightVerificationProps) {
+  const demo = DEMO_MODE;
   const [permission, setPermission] = useState<MotionPermissionState>("unknown");
   const [verificationState, setVerificationState] = useState<VerificationState>("verifying");
 
@@ -126,12 +138,12 @@ export default function SpotlightVerification({
   }, [distance]);
 
   const glowShadow = useMemo(() => {
-    const a = 0.14 + glow * 0.32;
-    const a2 = 0.08 + glow * 0.22;
-    const b1 = 22 + glow * 46;
-    const b2 = 48 + glow * 84;
+    const a = (demo ? 0.18 : 0.14) + glow * (demo ? 0.42 : 0.32);
+    const a2 = (demo ? 0.11 : 0.08) + glow * (demo ? 0.32 : 0.22);
+    const b1 = (demo ? 30 : 22) + glow * (demo ? 66 : 46);
+    const b2 = (demo ? 70 : 48) + glow * (demo ? 120 : 84);
     return `0 0 ${b1}px rgba(56,189,248,${a}), 0 0 ${b2}px rgba(99,102,241,${a2})`;
-  }, [glow]);
+  }, [demo, glow]);
 
   const requestPermission = useCallback(async () => {
     if (!("DeviceOrientationEvent" in window)) {
@@ -244,6 +256,7 @@ export default function SpotlightVerification({
 
       if (nextProgress >= 100 && !verifiedRef.current) {
         verifiedRef.current = true;
+        if (demo) vibrate([12, 18, 12]);
         setVerificationState("success");
         audioRef.current?.stop();
         audioRef.current = null;
@@ -266,11 +279,32 @@ export default function SpotlightVerification({
         <div className="relative overflow-hidden rounded-[28px] ring-1 ring-white/10">
           <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_20%,rgba(30,58,138,0.65)_0%,rgba(2,6,23,0.92)_55%,rgba(0,0,0,1)_100%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(90%_70%_at_50%_25%,rgba(56,189,248,0.12)_0%,rgba(0,0,0,0)_60%)]" />
+          {demo ? (
+            <motion.div className="absolute -inset-16 opacity-70" style={{ x: dot.x * 0.08, y: dot.y * 0.08 }} aria-hidden="true">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.20)_0%,rgba(99,102,241,0.14)_32%,rgba(0,0,0,0)_74%)]" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(16,185,129,0.12)_0%,rgba(0,0,0,0)_58%)]" />
+            </motion.div>
+          ) : null}
+          {demo ? (
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(120% 100% at 50% 35%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.50) 74%, rgba(0,0,0,0.86) 100%)"
+              }}
+              aria-hidden="true"
+            />
+          ) : null}
 
           <div className="relative px-5 pb-6 pt-6">
             <header className="text-center">
               <p className="text-xs font-medium tracking-[0.22em] text-white/60">SPOTLIGHT</p>
-              <h1 className="mt-2 text-balance text-[22px] font-semibold tracking-tight text-white">
+              <h1
+                className={[
+                  "mt-2 text-balance font-semibold tracking-tight text-white",
+                  demo ? "text-[28px]" : "text-[22px]"
+                ].join(" ")}
+              >
                 {verificationState === "success" ? "You’re in." : "Hold steady."}
               </h1>
               <p className="mt-1 text-sm text-white/65">
@@ -279,7 +313,7 @@ export default function SpotlightVerification({
             </header>
 
             <div className="mt-7 flex items-center justify-center">
-              <div className="relative h-[276px] w-[276px]">
+              <div className={["relative", demo ? "h-[332px] w-[332px]" : "h-[276px] w-[276px]"].join(" ")}>
                 <motion.div
                   className="absolute inset-0 rounded-full"
                   animate={{
@@ -312,13 +346,20 @@ export default function SpotlightVerification({
                       aria-hidden="true"
                       focusable="false"
                     >
-                      <circle cx="130" cy="130" r="112" stroke="rgba(255,255,255,0.10)" strokeWidth="10" fill="none" />
+                      <circle
+                        cx="130"
+                        cy="130"
+                        r="112"
+                        stroke="rgba(255,255,255,0.10)"
+                        strokeWidth={demo ? 14 : 10}
+                        fill="none"
+                      />
                       <motion.circle
                         cx="130"
                         cy="130"
                         r="112"
                         stroke="rgba(56,189,248,0.95)"
-                        strokeWidth="10"
+                        strokeWidth={demo ? 14 : 10}
                         strokeLinecap="round"
                         fill="none"
                         strokeDasharray={2 * Math.PI * 112}
@@ -362,7 +403,7 @@ export default function SpotlightVerification({
                 <span>Stability</span>
                 <span>{Math.round(progress)}%</span>
               </div>
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div className={["mt-2 w-full overflow-hidden rounded-full bg-white/10", demo ? "h-2" : "h-1.5"].join(" ")}>
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400"
                   initial={false}

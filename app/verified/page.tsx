@@ -1,11 +1,13 @@
 import Link from "next/link";
+import { DEMO_MODE } from "@/lib/demoMode";
 
 export default function VerifiedPage() {
+  const demo = DEMO_MODE;
   return (
     <main className="h-dvh overflow-hidden bg-black px-4">
       <div className="flex h-full items-center justify-center">
       <div className="mx-auto w-full max-w-[430px] rounded-[28px] bg-white/[0.03] px-5 py-6 ring-1 ring-white/10">
-        <h1 className="text-xl font-semibold tracking-tight">Verified</h1>
+        <h1 className={["font-semibold tracking-tight", demo ? "text-5xl" : "text-xl"].join(" ")}>Verified</h1>
         <p className="mt-2 text-sm text-white/70">Success callback fired.</p>
         <Link
           href="/verify"
