@@ -15,7 +15,6 @@ function VerifyPageClient() {
 
   return (
     <VerificationWizard
-      returnTo={returnTo}
       onVerified={() => {
         router.push(verifiedUrl);
       }}
