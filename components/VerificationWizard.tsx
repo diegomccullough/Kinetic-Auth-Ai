@@ -190,10 +190,13 @@ const DOT_PX_PER_DEG = DOT_MAX_OFFSET_PX / DOT_CLAMP_DEG;
 const GYRO_FAIL_SECONDS = 6;
 
 /** Minimum shake magnitude (accel delta) to count as a beat hit */
-const SHAKE_THRESHOLD = 12;
+const SHAKE_THRESHOLD = 18;
 
 /** Beat window tolerance in ms either side of the beat */
-const BEAT_WINDOW_MS = 220;
+const BEAT_WINDOW_MS = 250;
+
+/** Cooldown in ms after a shake is registered before another can count */
+const SHAKE_COOLDOWN_MS = 400;
 
 /** Number of beats the user must hit to pass the beat challenge */
 const BEATS_REQUIRED = 10;
@@ -545,6 +548,7 @@ function BeatChallenge({
   const beatsHitRef = useRef(0);
   const phaseRef = useRef<"countdown" | "playing" | "done">("countdown");
   const nextBeatAtRef = useRef(0);
+  const lastShakeAtRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const trackAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -651,10 +655,15 @@ function BeatChallenge({
       if (delta < SHAKE_THRESHOLD) return;
 
       const now = performance.now();
+
+      // Cooldown: ignore shakes that happen too soon after the last registered shake
+      if (now - lastShakeAtRef.current < SHAKE_COOLDOWN_MS) return;
+
       const dist = Math.abs(now - nextBeatAtRef.current + beatIntervalMs / 2);
       const onBeat = dist < BEAT_WINDOW_MS || Math.abs(now - nextBeatAtRef.current) < BEAT_WINDOW_MS;
 
       if (onBeat) {
+        lastShakeAtRef.current = now;
         vibrate([15, 10, 15]);
         setBeatFlash(true);
         window.setTimeout(() => setBeatFlash(false), 180);
@@ -666,6 +675,8 @@ function BeatChallenge({
           window.setTimeout(onPass, 600);
         }
       } else {
+        // Also apply cooldown to misses to prevent spam
+        lastShakeAtRef.current = now;
         setMissFlash(true);
         window.setTimeout(() => setMissFlash(false), 180);
       }
