@@ -1,366 +1,288 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import AnimatedNumber from "@/components/AnimatedNumber";
-import { DEMO_MODE } from "@/lib/demoMode";
 
-function HomePageClient() {
-  const reduceMotion = useReducedMotion();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const verified = searchParams.get("verified") === "true";
-
-  const [placed, setPlaced] = useState(false);
+// ─── Live queue numbers ───────────────────────────────────────────────────────
+function useQueue() {
   const [queue, setQueue] = useState(12483);
   const [viewing, setViewing] = useState(3218);
   const [ticketsLeft, setTicketsLeft] = useState(43);
   const [secondsLeft, setSecondsLeft] = useState(134);
-  const [unlockFx, setUnlockFx] = useState(false);
-  const unlockSeenRef = useRef(false);
-  const timersRef = useRef<number[]>([]);
+  const timers = useRef<number[]>([]);
 
   useEffect(() => {
-    return () => {
-      for (const id of timersRef.current) window.clearTimeout(id);
-      timersRef.current = [];
-    };
-  }, [reduceMotion]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
+    const qv = window.setInterval(() => {
       setQueue((n) => n + 7 + Math.floor(Math.random() * 21));
       setViewing((n) =>
-        Math.max(1200, n + (Math.random() > 0.5 ? 1 : -1) * (18 + Math.floor(Math.random() * 40)))
+        Math.max(2800, n + (Math.random() > 0.5 ? 1 : -1) * (12 + Math.floor(Math.random() * 30)))
       );
-    }, 900);
-    return () => window.clearInterval(id);
-  }, []);
+    }, 1100);
 
-  useEffect(() => {
-    if (reduceMotion) return;
     const tick = () => {
-      setTicketsLeft((n) => Math.max(0, n - (Math.random() > 0.55 ? 1 : 0)));
-      const next = 1600 + Math.floor(Math.random() * 1600);
+      setTicketsLeft((n) => Math.max(0, n - (Math.random() > 0.6 ? 1 : 0)));
+      const next = 1800 + Math.floor(Math.random() * 2000);
       const id = window.setTimeout(tick, next);
-      timersRef.current.push(id);
+      timers.current.push(id);
     };
-    const first = window.setTimeout(tick, 1400);
-    timersRef.current.push(first);
-    return () => {
-      for (const id of timersRef.current) window.clearTimeout(id);
-      timersRef.current = [];
-    };
-  }, [reduceMotion]);
+    const first = window.setTimeout(tick, 2000);
+    timers.current.push(first);
 
-  useEffect(() => {
-    const id = window.setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
-    return () => window.clearInterval(id);
+    const cd = window.setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
+
+    return () => {
+      window.clearInterval(qv);
+      window.clearInterval(cd);
+      for (const id of timers.current) window.clearTimeout(id);
+    };
   }, []);
 
-  useEffect(() => {
-    if (!verified) {
-      unlockSeenRef.current = false;
-      setUnlockFx(false);
-      return;
-    }
-    if (unlockSeenRef.current) return;
-    unlockSeenRef.current = true;
-    setUnlockFx(true);
-    const id = window.setTimeout(() => setUnlockFx(false), 1600);
-    return () => window.clearTimeout(id);
-  }, [verified]);
+  return { queue, viewing, ticketsLeft, secondsLeft };
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+function HomePageClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const verified = searchParams.get("verified") === "true";
+  const [placed, setPlaced] = useState(false);
+
+  const { queue, viewing, ticketsLeft, secondsLeft } = useQueue();
 
   const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
   const ss = String(secondsLeft % 60).padStart(2, "0");
-  const urgent = secondsLeft <= 30;
-
-  const queueLabel = useMemo(() => `${queue.toLocaleString()} fans`, [queue]);
-  const viewingLabel = useMemo(() => `${viewing.toLocaleString()} viewing`, [viewing]);
 
   return (
-    <main className="app-shell text-white">
-      <div className="screen-card">
+    <div className="flex min-h-dvh flex-col bg-[#f4f5f7]">
 
-        {/* ── Event header ────────────────────────────────────── */}
-        <motion.header
-          initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-          animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: "easeOut" }}
-          className="relative overflow-hidden rounded-[28px] bg-white/[0.05] p-5 ring-1 ring-white/10 backdrop-blur"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(80%_80%_at_40%_0%,rgba(56,189,248,0.16)_0%,rgba(99,102,241,0.08)_35%,rgba(0,0,0,0)_72%)]" />
-          <div className="relative">
-            <p className="text-xs font-semibold tracking-[0.30em] text-white/55">ONSLAUGHT TOUR</p>
-            <h1 className="mt-3 text-balance text-4xl font-semibold leading-[1.02] tracking-tight">
-              BISON LIVE <span className="text-white/65">/ HOMEcoming night</span>
-            </h1>
-            <p className="mt-2 text-sm text-white/60">Fri • Oct 17 • Neon City Arena • 8:30 PM</p>
-
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {/* Queue */}
-              <div className="rounded-2xl bg-black/30 px-4 py-3 ring-1 ring-white/10">
-                <p className="text-[10px] font-semibold tracking-[0.22em] text-white/55">FANS IN QUEUE</p>
-                <div className="mt-1 flex items-center gap-2">
-                  <motion.div
-                    className="h-2 w-2 rounded-full bg-sky-300"
-                    animate={reduceMotion ? undefined : { opacity: [0.35, 1, 0.35], scale: [1, 1.2, 1] }}
-                    transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-                    style={{ boxShadow: "0 0 14px rgba(56,189,248,0.70)" }}
-                    aria-hidden="true"
-                  />
-                  {DEMO_MODE ? (
-                    <AnimatedNumber
-                      value={queue}
-                      className="text-lg font-semibold tabular-nums"
-                      duration={0.8}
-                      format={(n) => `${Math.round(n).toLocaleString()} fans`}
-                    />
-                  ) : (
-                    <AnimatePresence mode="popLayout" initial={false}>
-                      <motion.span
-                        key={queue}
-                        className="text-lg font-semibold tabular-nums"
-                        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                        exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-                        transition={{ duration: 0.18, ease: "easeOut" }}
-                      >
-                        {queueLabel}
-                      </motion.span>
-                    </AnimatePresence>
-                  )}
-                </div>
-              </div>
-
-              {/* Activity */}
-              <div className="rounded-2xl bg-black/30 px-4 py-3 ring-1 ring-white/10">
-                <p className="text-[10px] font-semibold tracking-[0.22em] text-white/55">ACTIVITY</p>
-                <div className="mt-1 flex items-baseline justify-between">
-                  {DEMO_MODE ? (
-                    <AnimatedNumber
-                      value={viewing}
-                      className="text-lg font-semibold tabular-nums"
-                      duration={0.7}
-                      format={(n) => `${Math.round(n).toLocaleString()} viewing`}
-                    />
-                  ) : (
-                    <AnimatePresence mode="popLayout" initial={false}>
-                      <motion.span
-                        key={viewing}
-                        className="text-lg font-semibold tabular-nums"
-                        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                        exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-                        transition={{ duration: 0.18, ease: "easeOut" }}
-                      >
-                        {viewingLabel}
-                      </motion.span>
-                    </AnimatePresence>
-                  )}
-                  <span className="text-xs text-white/50">this section</span>
-                </div>
-              </div>
+      {/* ── Sticky top header ──────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-20 border-b border-gray-200 bg-white">
+        <div className="mx-auto max-w-lg px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">
+                Onslaught Tour
+              </p>
+              <h1 className="mt-0.5 text-lg font-bold leading-snug text-gray-900">
+                BISON LIVE — Homecoming Night
+              </h1>
+              <p className="mt-0.5 text-sm text-gray-500">
+                Fri Oct 17 · Neon City Arena · 8:30 PM
+              </p>
             </div>
-
-            {/* Cart countdown */}
-            <div className="mt-3 flex items-center justify-between rounded-2xl bg-rose-500/12 px-4 py-3 ring-1 ring-rose-300/18">
-              <div>
-                <p className="text-[10px] font-semibold tracking-[0.22em] text-rose-200/80">URGENCY</p>
-                <p className="mt-1 text-sm font-semibold text-rose-100">
-                  Cart expires in{" "}
-                  <span className={["tabular-nums", urgent && !reduceMotion ? "text-rose-200" : ""].join(" ")}>
-                    {urgent && !reduceMotion ? (
-                      <motion.span
-                        className="inline-block"
-                        animate={{ scale: [1, 1.03, 1], opacity: [0.9, 1, 0.9] }}
-                        transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
-                      >
-                        {mm}:{ss}
-                      </motion.span>
-                    ) : (
-                      `${mm}:${ss}`
-                    )}
-                  </span>
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] font-semibold tracking-[0.22em] text-white/55">SCARCITY</p>
-                <p className="mt-1 text-sm font-semibold text-white">
-                  Only{" "}
-                  {DEMO_MODE ? (
-                    <AnimatedNumber value={ticketsLeft} className="tabular-nums" duration={0.5} />
-                  ) : (
-                    <AnimatePresence mode="popLayout" initial={false}>
-                      <motion.span
-                        key={ticketsLeft}
-                        className="tabular-nums"
-                        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                        exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-                        transition={{ duration: 0.18, ease: "easeOut" }}
-                      >
-                        {ticketsLeft}
-                      </motion.span>
-                    </AnimatePresence>
-                  )}{" "}
-                  left
-                </p>
-              </div>
-            </div>
+            <span className="mt-1 shrink-0 rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+              High Demand
+            </span>
           </div>
-        </motion.header>
+        </div>
+      </header>
 
-        {/* ── Seat + order section ─────────────────────────────── */}
-        <motion.section
-          initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-          animate={
-            reduceMotion
-              ? undefined
-              : {
-                  opacity: 1,
-                  y: 0,
-                  boxShadow:
-                    verified && unlockFx
-                      ? ["0 0 0 rgba(0,0,0,0)", "0 0 100px rgba(52,211,153,0.18)", "0 0 0 rgba(0,0,0,0)"]
-                      : undefined
-                }
-          }
-          transition={{ delay: 0.05, duration: 0.45, ease: "easeOut" }}
-          className="relative overflow-hidden rounded-[28px] bg-white/[0.04] p-5 ring-1 ring-white/10 backdrop-blur"
-        >
-          <div className="flex flex-col gap-5">
-            {/* Seat row */}
-            <div className="flex items-start justify-between gap-4">
+      {/* ── Scrollable content ─────────────────────────────────────────────── */}
+      <main className="mx-auto w-full max-w-lg flex-1 px-5 pb-36 pt-6">
+
+        {/* Queue Status */}
+        <section aria-label="Queue status">
+          <div className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white">
+
+            <div className="flex items-center justify-between px-4 py-3.5">
               <div>
-                <p className="text-xs font-semibold tracking-[0.22em] text-white/55">SEAT</p>
-                <p className="mt-2 text-xl font-semibold tracking-tight">Section B • Row 3</p>
-                <p className="mt-1 text-sm text-white/60">1 ticket per customer • limited release</p>
+                <p className="text-sm font-semibold text-gray-900">
+                  {queue.toLocaleString()} fans ahead of you
+                </p>
+                <p className="mt-0.5 text-xs text-gray-500">Estimated entry: 3–5 minutes</p>
               </div>
-              <div className="flex flex-col items-end gap-2">
-                <div className="text-right">
-                  <p className="text-xs font-semibold tracking-[0.22em] text-white/55">PRICE</p>
-                  <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">$299</p>
-                  <p className="mt-1 text-xs text-white/50">incl. fees</p>
-                </div>
-
-                {/* Single mint verified badge */}
-                <AnimatePresence initial={false}>
-                  {verified ? (
-                    <motion.div
-                      key="verified-badge"
-                      initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.95 }}
-                      animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
-                      exit={reduceMotion ? undefined : { opacity: 0, y: -8, scale: 0.95 }}
-                      transition={reduceMotion ? undefined : { type: "spring", stiffness: 240, damping: 22, mass: 0.55 }}
-                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 ring-1 ring-emerald-300/30"
-                      style={{
-                        background: "rgba(52,211,153,0.12)",
-                        boxShadow: "0 0 28px rgba(52,211,153,0.18)"
-                      }}
-                    >
-                      <span className="text-xs text-emerald-300">✔</span>
-                      <span className="text-[11px] font-semibold tracking-[0.16em] text-emerald-200">
-                        HUMAN VERIFIED
-                      </span>
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
-              </div>
+              <div className="h-2 w-2 animate-pulse rounded-full bg-green-500" aria-hidden="true" />
             </div>
 
-            {/* Risk banner */}
-            <div className="rounded-2xl bg-amber-400/10 px-4 py-3 ring-1 ring-amber-300/18">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-amber-100">
-                  High demand — quick verification required
-                </p>
-                <span className="shrink-0 rounded-full bg-amber-300/18 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] text-amber-100">
-                  RISK
+            <div className="px-4 py-3.5">
+              <p className="text-sm text-gray-600">
+                <span className="font-semibold text-gray-900">{viewing.toLocaleString()}</span>{" "}
+                currently viewing Section B
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between px-4 py-3.5">
+              <p className="text-sm text-gray-600">
+                Cart reserved for{" "}
+                <span className={["font-semibold tabular-nums", secondsLeft <= 30 ? "text-red-600" : "text-gray-900"].join(" ")}>
+                  {mm}:{ss}
                 </span>
-              </div>
+              </p>
+              <span className="text-xs text-gray-400">Do not refresh</span>
             </div>
 
-            {/* Single primary CTA */}
-            <motion.button
-              type="button"
-              onClick={() => {
-                if (!verified) {
-                  router.push("/verify");
-                  return;
-                }
-                setPlaced(true);
-              }}
-              className="relative inline-flex h-14 w-full items-center justify-center overflow-hidden rounded-2xl text-sm font-semibold tracking-tight ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-              style={
-                verified
-                  ? { background: "#34D399", color: "#000" }
-                  : { background: "rgba(255,255,255,0.08)", color: "#fff" }
-              }
-              animate={
-                reduceMotion
-                  ? undefined
-                  : {
-                      boxShadow: verified
-                        ? [
-                            "0 0 40px rgba(52,211,153,0.28), 0 8px 40px rgba(0,0,0,0.35)",
-                            "0 0 80px rgba(52,211,153,0.50), 0 8px 40px rgba(0,0,0,0.35)",
-                            "0 0 40px rgba(52,211,153,0.28), 0 8px 40px rgba(0,0,0,0.35)"
-                          ]
-                        : "0 0 0 rgba(0,0,0,0)"
-                    }
-              }
-              transition={
-                reduceMotion
-                  ? undefined
-                  : verified
-                  ? { duration: 2.0, repeat: Infinity, ease: "easeInOut" }
-                  : { type: "spring", stiffness: 220, damping: 22 }
-              }
-            >
-              {/* Shimmer on unlock */}
-              <AnimatePresence>
-                {verified && unlockFx && !reduceMotion ? (
-                  <motion.div
-                    key="shimmer"
-                    className="pointer-events-none absolute inset-0 opacity-70"
-                    initial={{ x: "-120%" }}
-                    animate={{ x: "120%" }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 1.05, ease: "easeOut" }}
-                    style={{
-                      background:
-                        "linear-gradient(115deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.38) 18%, rgba(255,255,255,0) 36%)"
-                    }}
-                    aria-hidden="true"
-                  />
-                ) : null}
-              </AnimatePresence>
-              {placed && verified ? "Order Placed ✔" : "Place Order"}
-            </motion.button>
           </div>
-        </motion.section>
+        </section>
 
-      </div>
-    </main>
-  );
-}
+        {/* Divider */}
+        <div className="my-6 border-t border-gray-200" />
 
-function HomePageFallback() {
-  return (
-    <main className="app-shell text-white">
-      <div className="screen-card">
-        <div className="h-[260px] rounded-[28px] bg-white/[0.04] ring-1 ring-white/10" />
-        <div className="rounded-[28px] bg-white/[0.04] ring-1 ring-white/10" style={{ height: 380 }} />
+        {/* Ticket Selection */}
+        <section aria-label="Ticket details">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Section B – Row 3</h2>
+              <p className="mt-1 text-sm font-medium text-gray-500">General Admission · 1 ticket</p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold tabular-nums text-gray-900">$299</p>
+              <p className="mt-0.5 text-xs text-gray-400">incl. all fees</p>
+            </div>
+          </div>
+
+          <ul className="mt-5 space-y-2.5 text-sm text-gray-600">
+            <li className="flex items-center gap-2.5">
+              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400" aria-hidden="true" />
+              1 ticket per customer · non-transferable for 24 hours
+            </li>
+            <li className="flex items-center gap-2.5">
+              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400" aria-hidden="true" />
+              Identity-verified purchase required
+            </li>
+            <li className="flex items-center gap-2.5">
+              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400" aria-hidden="true" />
+              Tickets delivered via mobile app on entry day
+            </li>
+          </ul>
+
+          <div className="mt-5 flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
+            <p className="text-sm font-semibold text-red-600">
+              Low inventory — {ticketsLeft} remaining
+            </p>
+          </div>
+        </section>
+
+        {/* Divider */}
+        <div className="my-6 border-t border-gray-200" />
+
+        {/* Verification status */}
+        <section aria-label="Verification status">
+          <div className="rounded-lg border border-gray-200 bg-white">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                Security Check
+              </p>
+              <span className={[
+                "rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+                verified
+                  ? "bg-green-50 text-green-700"
+                  : "bg-gray-100 text-gray-500"
+              ].join(" ")}>
+                {verified ? "Passed" : "Pending"}
+              </span>
+            </div>
+            <div className="divide-y divide-gray-100">
+              <div className="flex items-center justify-between px-4 py-3">
+                <p className="text-sm text-gray-600">Behavior analysis</p>
+                <p className={["text-sm font-medium", verified ? "text-green-700" : "text-gray-400"].join(" ")}>
+                  {verified ? "Verified" : "Not run"}
+                </p>
+              </div>
+              <div className="flex items-center justify-between px-4 py-3">
+                <p className="text-sm text-gray-600">Risk level</p>
+                <p className={["text-sm font-medium", verified ? "text-green-700" : "text-gray-400"].join(" ")}>
+                  {verified ? "Normal" : "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Order summary */}
+        {verified && (
+          <section aria-label="Order summary" className="mt-6">
+            <div className="rounded-lg border border-gray-200 bg-white">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Order Summary</p>
+              </div>
+              <div className="space-y-0 divide-y divide-gray-100">
+                <div className="flex justify-between px-4 py-3">
+                  <p className="text-sm text-gray-600">1× Section B · Row 3</p>
+                  <p className="text-sm font-medium text-gray-900">$279.00</p>
+                </div>
+                <div className="flex justify-between px-4 py-3">
+                  <p className="text-sm text-gray-600">Service fee</p>
+                  <p className="text-sm font-medium text-gray-900">$20.00</p>
+                </div>
+                <div className="flex justify-between px-4 py-3">
+                  <p className="text-sm font-semibold text-gray-900">Total</p>
+                  <p className="text-sm font-semibold text-gray-900">$299.00</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+      </main>
+
+      {/* ── Sticky bottom CTA bar ──────────────────────────────────────────── */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white px-5 pb-[env(safe-area-inset-bottom,0px)] pt-4"
+        style={{ boxShadow: "0 -1px 0 0 #e5e7eb, 0 -4px 12px 0 rgba(0,0,0,0.04)" }}
+      >
+        <div className="mx-auto max-w-lg">
+
+          {verified && !placed && (
+            <p className="mb-3 flex items-center gap-2 text-xs text-green-700">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+                <circle cx="6.5" cy="6.5" r="6.5" fill="#16a34a" opacity=".15" />
+                <path d="M4 6.5l1.8 1.8L9 4.5" stroke="#16a34a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Behavior verified · Risk level: Normal
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!verified) {
+                router.push("/verify");
+              } else {
+                setPlaced(true);
+              }
+            }}
+            disabled={placed}
+            className={[
+              "w-full rounded-md py-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
+              placed
+                ? "bg-green-600 text-white cursor-default"
+                : verified
+                ? "bg-blue-700 text-white hover:bg-blue-800 active:bg-blue-900"
+                : "bg-gray-900 text-white hover:bg-gray-800 active:bg-gray-700"
+            ].join(" ")}
+          >
+            {placed
+              ? "Order Placed"
+              : verified
+              ? "Place Order — $299"
+              : "Secure & Continue"}
+          </button>
+
+          {!verified && (
+            <p className="mt-2 text-center text-xs text-gray-400">
+              Motion verification required to complete purchase
+            </p>
+          )}
+        </div>
       </div>
-    </main>
+
+    </div>
   );
 }
 
 export default function HomePage() {
   return (
-    <Suspense fallback={<HomePageFallback />}>
+    <Suspense fallback={
+      <div className="flex min-h-dvh flex-col bg-[#f4f5f7]">
+        <div className="h-[72px] border-b border-gray-200 bg-white" />
+        <div className="mx-auto w-full max-w-lg flex-1 space-y-4 px-5 pt-6">
+          <div className="h-28 rounded-lg bg-gray-200 animate-pulse" />
+          <div className="h-40 rounded-lg bg-gray-200 animate-pulse" />
+          <div className="h-24 rounded-lg bg-gray-200 animate-pulse" />
+        </div>
+      </div>
+    }>
       <HomePageClient />
     </Suspense>
   );
