@@ -195,8 +195,11 @@ function BeatChallenge({
   const nextBeatAtRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const trackAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Synthesize a click/metronome beat via Web Audio
+  const useTrackAudio = Boolean(song.audioSrc);
+
+  // Synthesize a click/metronome beat via Web Audio (used when no track audio)
   const playClick = useCallback((accent = false) => {
     try {
       if (!audioCtxRef.current) {
@@ -221,7 +224,7 @@ function BeatChallenge({
   useEffect(() => {
     if (countdown > 0) {
       const id = window.setTimeout(() => {
-        playClick(countdown === 1);
+        if (!useTrackAudio) playClick(countdown === 1);
         setCountdown((c) => c - 1);
       }, 800);
       return () => window.clearTimeout(id);
@@ -232,9 +235,30 @@ function BeatChallenge({
       setNextBeatAt(first);
       nextBeatAtRef.current = first;
     }
-  }, [countdown, beatIntervalMs, playClick]);
+  }, [countdown, beatIntervalMs, playClick, useTrackAudio]);
 
-  // Beat ticker — fires on each beat, plays click, pulses UI
+  // Play track audio from public/music/ when phase becomes "playing"
+  useEffect(() => {
+    if (phase !== "playing" || !song.audioSrc) return;
+
+    const audio = new Audio(song.audioSrc);
+    trackAudioRef.current = audio;
+    audio.volume = 1;
+    audio.loop = true;
+    const played = audio.play();
+    if (typeof played?.then === "function") {
+      played.catch(() => { /* autoplay blocked or file missing */ });
+    }
+
+    return () => {
+      audio.pause();
+      audio.src = "";
+      audio.load();
+      trackAudioRef.current = null;
+    };
+  }, [phase, song.audioSrc]);
+
+  // Beat ticker — fires on each beat, plays click only when no track, pulses UI
   useEffect(() => {
     if (phase !== "playing") return;
 
@@ -242,7 +266,7 @@ function BeatChallenge({
     const tick = (now: number) => {
       raf = window.requestAnimationFrame(tick);
       if (now >= nextBeatAtRef.current) {
-        playClick(false);
+        if (!useTrackAudio) playClick(false);
         setPulseScale(1.18);
         window.setTimeout(() => setPulseScale(1), 120);
         nextBeatAtRef.current = now + beatIntervalMs;
@@ -251,7 +275,7 @@ function BeatChallenge({
     };
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [phase, beatIntervalMs, playClick]);
+  }, [phase, beatIntervalMs, playClick, useTrackAudio]);
 
   // DeviceMotion shake detection
   useEffect(() => {
@@ -298,6 +322,13 @@ function BeatChallenge({
   useEffect(() => {
     return () => {
       try { audioCtxRef.current?.close(); } catch { /* ignore */ }
+      const track = trackAudioRef.current;
+      if (track) {
+        track.pause();
+        track.src = "";
+        track.load();
+        trackAudioRef.current = null;
+      }
     };
   }, []);
 

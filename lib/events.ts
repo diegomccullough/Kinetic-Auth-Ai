@@ -20,6 +20,8 @@ export type EventSong = {
   bpm: number;
   /** YouTube embed ID (used for audio only) */
   youtubeId: string;
+  /** Path to audio file in public/music/ — e.g. /music/coldplay.mp3 */
+  audioSrc?: string;
 };
 
 export type Event = {
@@ -108,7 +110,7 @@ export const EVENTS: Event[] = [
     tag: "Selling Fast",
     sections: arenaFloorSections,
     songs: [
-      { title: "Viva La Vida", artist: "Coldplay", bpm: 138, youtubeId: "dvgZkm1xWPE" },
+      { title: "Viva La Vida", artist: "Coldplay", bpm: 138, youtubeId: "dvgZkm1xWPE", audioSrc: "/music/coldplay.mp3" },
     ],
   },
   {
@@ -129,7 +131,7 @@ export const EVENTS: Event[] = [
     tag: "High Demand",
     sections: arenaFloorSections,
     songs: [
-      { title: "Freestyle", artist: "Lil Baby", bpm: 150, youtubeId: "Yvng_FQOT4o" },
+      { title: "Freestyle", artist: "Lil Baby", bpm: 150, youtubeId: "Yvng_FQOT4o", audioSrc: "/music/lil-baby.mp3" },
     ],
   },
   {
@@ -170,7 +172,7 @@ export const EVENTS: Event[] = [
     tag: "Selling Fast",
     sections: arenaFloorSections,
     songs: [
-      { title: "Passionfruit", artist: "Drake", bpm: 100, youtubeId: "RubBzkZzpUA" },
+      { title: "Passionfruit", artist: "Drake", bpm: 100, youtubeId: "RubBzkZzpUA", audioSrc: "/music/drake.mp3" },
     ],
   },
   {
@@ -212,7 +214,7 @@ export const EVENTS: Event[] = [
     tag: "Selling Fast",
     sections: arenaFloorSections,
     songs: [
-      { title: "Crazy In Love", artist: "Beyoncé", bpm: 99, youtubeId: "ViwtNLUqkMY" },
+      { title: "Crazy In Love", artist: "Beyoncé", bpm: 99, youtubeId: "ViwtNLUqkMY", audioSrc: "/music/beyonce.mp3" },
     ],
   },
   // ── Other events ──────────────────────────────────────────────────────────
