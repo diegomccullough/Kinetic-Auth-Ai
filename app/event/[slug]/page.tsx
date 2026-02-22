@@ -34,7 +34,6 @@ function EventDetailClient() {
   const qty = Number(searchParams.get("qty") ?? 1);
 
   const event = getEventBySlug(slug);
-  const [placed, setPlaced] = useState(false);
   const [ticketsLeft, setTicketsLeft] = useState(43);
   const timersRef = useRef<number[]>([]);
   const { seconds, mm, ss } = useCountdown(134);
@@ -250,7 +249,7 @@ function EventDetailClient() {
         className="fixed inset-x-0 bottom-0 z-40 border-t border-blue-100 bg-white px-4 pb-[env(safe-area-inset-bottom,0px)] pt-3 shadow-[0_-4px_16px_rgba(2,108,223,0.08)]"
       >
         <div className="mx-auto max-w-3xl">
-          {verified && !placed && (
+          {verified && (
             <p className="mb-2 flex items-center gap-2 text-xs text-blue-700">
               <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
                 <circle cx="6.5" cy="6.5" r="6.5" fill="#026cdf" fillOpacity=".15" />
@@ -261,36 +260,31 @@ function EventDetailClient() {
           )}
           <button
             type="button"
-            disabled={placed}
             onClick={() => {
               if (!selectedSection && !verified) {
                 router.push(seatsUrl);
               } else if (!verified) {
                 router.push(verifyUrl);
               } else {
-                setPlaced(true);
+                router.push(`/checkout?event=${slug}&section=${sectionId ?? ""}&qty=${qty}`);
               }
             }}
             className={[
               "w-full rounded-xl py-3.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
-              placed
-                ? "bg-green-600 text-white cursor-default"
-                : verified
+              verified
                 ? "bg-[#026cdf] text-white hover:bg-[#0258b8] active:bg-[#014fa6]"
                 : selectedSection
                 ? "bg-gray-900 text-white hover:bg-gray-800"
                 : "bg-[#026cdf] text-white hover:bg-[#0258b8]",
             ].join(" ")}
           >
-            {placed
-              ? "Order Placed ✓"
-              : verified
+            {verified
               ? `Place Order — $${total.toFixed(2)}`
               : selectedSection
               ? "Verify to Purchase"
               : "Choose Seats →"}
           </button>
-          {!verified && !placed && (
+          {!verified && (
             <p className="mt-1.5 text-center text-xs text-gray-400">
               {selectedSection ? "Motion verification required to complete purchase" : "Select your seats, then verify to buy"}
             </p>

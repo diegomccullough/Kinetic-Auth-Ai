@@ -7,7 +7,6 @@ import { useDeviceOrientation } from "@/lib/useDeviceOrientation";
 import PhoneTiltPreview from "@/components/PhoneTiltPreview";
 import type { EventSong } from "@/lib/events";
 import { evaluateRisk } from "@/lib/riskClient";
-import { generateInstruction, speak } from "@/lib/narrateClient";
 
 // ─── AI Risk Types ────────────────────────────────────────────────────────────
 type RiskLevel = "low" | "medium" | "high";
@@ -163,56 +162,6 @@ function Row({ label, value, color, wrap }: { label: string; value: string; colo
   );
 }
 
-// ─── Voice Guidance Button ────────────────────────────────────────────────────
-function VoiceGuidanceButton({
-  step,
-  riskLevel,
-  disabled,
-  voiceLoading,
-  voiceText,
-  onNarrate,
-}: {
-  step: "tilt" | "beat";
-  riskLevel: RiskLevel;
-  disabled?: boolean;
-  voiceLoading: boolean;
-  voiceText: string | null;
-  onNarrate: () => Promise<void>;
-}) {
-  const handleClick = useCallback(() => {
-    if (voiceLoading || disabled) return;
-    onNarrate();
-  }, [voiceLoading, disabled, onNarrate]);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={voiceLoading || disabled}
-        style={{
-          height: 36, borderRadius: 10, border: "1px solid rgba(51,65,85,0.8)",
-          background: "rgba(30,41,59,0.8)", color: voiceLoading || disabled ? "#475569" : "#93c5fd",
-          fontSize: 12, fontWeight: 500, cursor: voiceLoading || disabled ? "default" : "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-          width: "100%", transition: "color 0.15s",
-        }}
-      >
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M8 1a3 3 0 0 1 3 3v4a3 3 0 1 1-6 0V4a3 3 0 0 1 3-3Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          <path d="M3 8a5 5 0 0 0 10 0M8 13v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-        {voiceLoading ? "Loading…" : "Enable AI Voice Guidance"}
-      </button>
-      {voiceText != null && voiceText !== "" && (
-        <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", lineHeight: 1.5, margin: 0 }}>
-          {voiceText}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
@@ -247,7 +196,7 @@ const SHAKE_THRESHOLD = 12;
 const BEAT_WINDOW_MS = 220;
 
 /** Number of beats the user must hit to pass the beat challenge */
-const BEATS_REQUIRED = 8;
+const BEATS_REQUIRED = 10;
 
 type Screen = "intro" | "tasks" | "analyzing" | "step_up_overview" | "beat" | "result";
 type TaskId = "left" | "right" | "steady";
@@ -892,9 +841,6 @@ function TiltChallenge({
   songs,
   risk,
   riskLoading,
-  voiceLoading,
-  voiceText,
-  onNarrate,
   onSuccess,
   onFailure,
 }: {
@@ -906,9 +852,6 @@ function TiltChallenge({
   songs?: EventSong[];
   risk: RiskResult | null;
   riskLoading: boolean;
-  voiceLoading: boolean;
-  voiceText: string | null;
-  onNarrate: () => Promise<void>;
   onSuccess: (score: ScoreBreakdown) => void;
   onFailure: (accumulated: TiltAccumulatedData) => void;
 }) {
@@ -1258,16 +1201,6 @@ function TiltChallenge({
         <div className="mt-6">
           <Stepper completed={completedCount} />
         </div>
-
-        <div className="mt-4">
-          <VoiceGuidanceButton
-            step="tilt"
-            riskLevel={risk?.risk_level ?? "medium"}
-            voiceLoading={voiceLoading}
-            voiceText={voiceText}
-            onNarrate={onNarrate}
-          />
-        </div>
       </div>
     </motion.section>
   );
@@ -1296,9 +1229,6 @@ export default function VerificationWizard({
   const [riskLoading, setRiskLoading] = useState(true);
   const [tiltFailCount, setTiltFailCount] = useState(0);
   const tiltFailCountRef = useRef(0);
-  const [voiceLoading, setVoiceLoading] = useState(false);
-  const [voiceText, setVoiceText] = useState<string | null>(null);
-
   const [trace, setTrace] = useState<VerificationTrace>({
     lastRiskRequest: null,
     lastRiskResponse: null,
@@ -1310,7 +1240,6 @@ export default function VerificationWizard({
 
   const [currentStep, setCurrentStep] = useState<CurrentStep>("preview");
   const [screen, setScreen] = useState<Screen>("intro");
-  const [debugOpen, setDebugOpen] = useState(false);
 
   const callRiskEval = useCallback(async (failCount: number): Promise<RiskResult> => {
     const payload = { ...DEMO_RISK_PAYLOAD, tilt_fail_count: failCount };
@@ -1337,28 +1266,6 @@ export default function VerificationWizard({
       });
     return () => { cancelled = true; };
   }, [callRiskEval]);
-
-  const handleNarrate = useCallback(async () => {
-    const step: "tilt" | "beat" = screen === "beat" ? "beat" : "tilt";
-    const riskLevel = risk?.risk_level ?? "medium";
-    setVoiceLoading(true);
-    setVoiceText(null);
-    setTrace((prev) => ({
-      ...prev,
-      lastNarratePayload: { step, risk_level: riskLevel } as Record<string, unknown>,
-      updatedAt: new Date().toISOString(),
-    }));
-    try {
-      const text = await generateInstruction(step, riskLevel);
-      speak(text);
-      setVoiceText(text);
-      setTrace((prev) => ({ ...prev, lastNarrateResult: text, updatedAt: new Date().toISOString() }));
-    } catch {
-      setTrace((prev) => ({ ...prev, lastNarrateResult: "(error)", updatedAt: new Date().toISOString() }));
-    } finally {
-      setVoiceLoading(false);
-    }
-  }, [risk?.risk_level, screen]);
 
   const [motionUnlocked, setMotionUnlocked] = useState(false);
   const [tiltAttemptKey, setTiltAttemptKey] = useState(0);
@@ -1493,19 +1400,7 @@ export default function VerificationWizard({
     finish(score);
   }, [finish]);
 
-  const debugStepLabel = currentStep;
-
   return (
-    <>
-    <DebugDrawer
-      currentStep={debugStepLabel}
-      tiltFailCount={tiltFailCount}
-      risk={risk}
-      trace={trace}
-      open={debugOpen}
-      onOpen={() => setDebugOpen(true)}
-      onClose={() => setDebugOpen(false)}
-    />
     <main className="min-h-[100dvh] flex flex-col items-center justify-start overflow-hidden text-white" style={{ background: "#0f172a" }}>
       <AnimatePresence mode="popLayout" initial={false}>
 
@@ -1690,9 +1585,6 @@ export default function VerificationWizard({
             songs={songs}
             risk={risk}
             riskLoading={riskLoading}
-            voiceLoading={voiceLoading}
-            voiceText={voiceText}
-            onNarrate={handleNarrate}
             onSuccess={handleTiltSuccess}
             onFailure={handleTiltFailure}
           />
@@ -1721,23 +1613,13 @@ export default function VerificationWizard({
         ═══════════════════════════════════════════════════════════ */}
         {currentStep === "beat" && screen === "beat" ? (
           beatSong ? (
-            <div key="beat" style={{ position: "relative" }}>
-              <BeatChallenge
-                song={beatSong}
-                onPass={handleBeatPass}
-                onSkip={handleBeatSkip}
-                reduceMotion={reduceMotion}
-              />
-              <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", width: "min(320px, 90vw)", zIndex: 100 }}>
-                <VoiceGuidanceButton
-                  step="beat"
-                  riskLevel={risk?.risk_level ?? "medium"}
-                  voiceLoading={voiceLoading}
-                  voiceText={voiceText}
-                  onNarrate={handleNarrate}
-                />
-              </div>
-            </div>
+            <BeatChallenge
+              key="beat"
+              song={beatSong}
+              onPass={handleBeatPass}
+              onSkip={handleBeatSkip}
+              reduceMotion={reduceMotion}
+            />
           ) : (
             <BeatPlaceholder key="beat-placeholder" onComplete={handleBeatPass} />
           )
@@ -1861,6 +1743,5 @@ export default function VerificationWizard({
 
       </AnimatePresence>
     </main>
-    </>
   );
 }
