@@ -7,7 +7,7 @@ import { useDeviceOrientation } from "@/lib/useDeviceOrientation";
 import PhoneTiltPreview from "@/components/PhoneTiltPreview";
 import type { EventSong } from "@/lib/events";
 import { evaluateRisk } from "@/lib/riskClient";
-import { narrate } from "@/lib/narrateClient";
+import { generateInstruction, speak } from "@/lib/narrateClient";
 
 // ─── AI Risk Types ────────────────────────────────────────────────────────────
 type RiskLevel = "low" | "medium" | "high";
@@ -1185,27 +1185,19 @@ export default function VerificationWizard({
 
   const handleNarrate = useCallback(async () => {
     const step: "tilt" | "beat" = screen === "beat" ? "beat" : "tilt";
-    const payload = {
-      step,
-      risk_level: risk?.risk_level ?? "medium",
-      accessibility: { voice_guidance: true },
-    };
+    const riskLevel = risk?.risk_level ?? "medium";
     setVoiceLoading(true);
     setVoiceText(null);
-    const ts = new Date().toISOString();
-    setTrace((prev) => ({ ...prev, lastNarratePayload: payload as Record<string, unknown>, updatedAt: ts }));
+    setTrace((prev) => ({
+      ...prev,
+      lastNarratePayload: { step, risk_level: riskLevel } as Record<string, unknown>,
+      updatedAt: new Date().toISOString(),
+    }));
     try {
-      const result = await narrate(payload);
-      if (result.kind === "audio") {
-        const url = URL.createObjectURL(result.blob);
-        const audio = new Audio(url);
-        audio.play().catch(() => {});
-        audio.addEventListener("ended", () => URL.revokeObjectURL(url));
-        setTrace((prev) => ({ ...prev, lastNarrateResult: "audio", updatedAt: new Date().toISOString() }));
-      } else {
-        setVoiceText(result.text);
-        setTrace((prev) => ({ ...prev, lastNarrateResult: result.text || null, updatedAt: new Date().toISOString() }));
-      }
+      const text = await generateInstruction(step, riskLevel);
+      speak(text);
+      setVoiceText(text);
+      setTrace((prev) => ({ ...prev, lastNarrateResult: text, updatedAt: new Date().toISOString() }));
     } catch {
       setTrace((prev) => ({ ...prev, lastNarrateResult: "(error)", updatedAt: new Date().toISOString() }));
     } finally {
