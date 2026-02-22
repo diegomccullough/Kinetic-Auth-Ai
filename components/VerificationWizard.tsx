@@ -4,6 +4,7 @@ import { AnimatePresence, animate, motion, useReducedMotion } from "framer-motio
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { scoreHumanConfidence, type MotionSample, type ScoreBreakdown } from "@/lib/scoring";
 import { useDeviceOrientation } from "@/lib/useDeviceOrientation";
+import PhoneTiltPreview from "@/components/PhoneTiltPreview";
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -165,7 +166,7 @@ export type VerificationWizardProps = {
 
 export default function VerificationWizard({ onVerified, onCancel: _onCancel }: VerificationWizardProps) {
   const reduceMotion = useReducedMotion();
-  const { smoothedGamma, smoothedRef, available, permissionState, requestPermission } =
+  const { smoothedBeta, smoothedGamma, smoothedRef, available, permissionState, requestPermission } =
     useDeviceOrientation();
 
   const [screen, setScreen] = useState<Screen>("intro");
@@ -373,116 +374,146 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
     return () => controls.stop();
   }, [confidenceTarget, reduceMotion, screen]);
 
+  const granted = permissionState === "granted";
+
   return (
     <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
-      {/* Subtle top-edge ambient */}
-      <div
-        className="pointer-events-none fixed inset-x-0 top-0 h-[260px]"
-        style={{ background: "radial-gradient(ellipse 70% 100% at 50% -20%, rgba(30,64,175,0.18) 0%, transparent 100%)" }}
-        aria-hidden="true"
-      />
+      <AnimatePresence mode="popLayout" initial={false}>
 
-      <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6">
-        <AnimatePresence mode="popLayout" initial={false}>
+        {/* ═══════════════════════════════════════════════════════════
+            SCREEN 1 — INTRO (full-screen hero)
+        ═══════════════════════════════════════════════════════════ */}
+        {screen === "intro" ? (
+          <motion.section
+            key="intro"
+            style={{
+              width: "100vw",
+              height: "100vh",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+              overflow: "hidden"
+            }}
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={reduceMotion ? undefined : { opacity: 1 }}
+            exit={reduceMotion ? undefined : { opacity: 0, scale: 0.97 }}
+            transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 28, mass: 0.6 }}
+          >
+            {/* Ambient background glow */}
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                background: "radial-gradient(ellipse 70% 50% at 50% 50%, rgba(34,211,238,0.07) 0%, transparent 70%)",
+                zIndex: 0
+              }}
+            />
 
-          {/* ═══════════════════════════════════════════════════════════
-              SCREEN 1 — INTRO
-          ═══════════════════════════════════════════════════════════ */}
-          {screen === "intro" ? (
-            <motion.section
-              key="intro"
-              className="flex min-h-dvh flex-col py-10"
-              initial={reduceMotion ? false : { opacity: 0, y: 16 }}
-              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-              exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
-              transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
+            {/* Title */}
+            <h1
+              style={{
+                position: "relative",
+                zIndex: 1,
+                fontSize: "clamp(15px, 2.5vw, 20px)",
+                fontWeight: 600,
+                letterSpacing: "-0.02em",
+                color: "#f1f5f9",
+                margin: "0 0 32px 0",
+                textAlign: "center"
+              }}
             >
-              {/* Wordmark */}
-              <div className="flex items-center justify-center">
-                <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
-              </div>
+              Live Motion Detection Preview
+            </h1>
 
-              {/* Tilt indicator */}
-              <div className="mx-auto mt-12 w-full flex-1 flex flex-col items-center justify-center gap-8">
-                <motion.div
-                  className="relative flex h-48 w-48 items-center justify-center"
-                  style={{ rotate: clamp(smoothedGamma, -22, 22) * 0.55 }}
-                >
-                  {/* Phone silhouette */}
-                  <div className="relative h-40 w-24 rounded-[18px] border border-slate-600 bg-slate-800 shadow-lg">
-                    <div className="absolute top-3 left-1/2 -translate-x-1/2 h-1.5 w-8 rounded-full bg-slate-700" />
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 h-1 w-5 rounded-full bg-slate-700" />
-                    <div className="absolute inset-2 rounded-[12px] bg-slate-900 flex items-center justify-center">
-                      <div className="h-6 w-6 rounded-full border-2 border-blue-500/60 flex items-center justify-center">
-                        <div className="h-2 w-2 rounded-full bg-blue-400" />
-                      </div>
-                    </div>
-                  </div>
-                  {/* Axis indicator */}
-                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-32 h-px bg-slate-700" />
-                  <motion.div
-                    className="absolute bottom-0 left-1/2 h-1.5 w-1.5 -translate-x-1/2 translate-y-1/2 rounded-full bg-blue-400"
-                    style={{ x: clamp(smoothedGamma, -22, 22) * 2.2 }}
-                  />
-                </motion.div>
+            {/* PhoneTiltPreview hero */}
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                width: 320,
+                height: 640,
+                flexShrink: 0
+              }}
+            >
+              <PhoneTiltPreview
+                beta={granted ? smoothedBeta : 0}
+                gamma={granted ? smoothedGamma : 0}
+                reduceMotion={!granted || !!reduceMotion}
+                variant="cinematic"
+                showBadge
+              />
+            </div>
 
-                {/* Tilt bar */}
-                <div className="w-full space-y-2">
-                  <div className="flex items-center justify-between text-xs text-slate-500">
-                    <span>Left</span>
-                    <span className="font-medium text-slate-400">Tilt sensitivity</span>
-                    <span>Right</span>
-                  </div>
-                  <div className="relative h-2 w-full rounded-full bg-slate-800">
-                    <div className="absolute inset-y-0 left-1/2 w-px bg-slate-600" />
-                    <motion.div
-                      className="absolute inset-y-0 w-4 -translate-x-1/2 rounded-full bg-blue-500"
-                      style={{ left: `${50 + clamp(smoothedGamma, -28, 28) * (50 / 28)}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
+            {/* Subtitle */}
+            <p
+              style={{
+                position: "relative",
+                zIndex: 1,
+                fontSize: 13,
+                color: "rgba(148,163,184,0.85)",
+                margin: "32px 0 0 0",
+                textAlign: "center",
+                lineHeight: 1.55
+              }}
+            >
+              Move your phone to see real-time orientation tracking.
+            </p>
 
-              {/* Text block */}
-              <div className="mt-8 space-y-2">
-                <h1 className="text-2xl font-semibold tracking-tight text-white">
-                  Motion verification required
-                </h1>
-                <p className="text-sm leading-relaxed text-slate-400">
-                  To keep this sale fair, we need a quick motion check. Tilt your phone left and right when prompted — takes about 5 seconds.
-                </p>
-              </div>
-
-              {/* Start button */}
-              <div className="mt-8">
-                <motion.button
-                  type="button"
-                  onClick={async () => {
-                    if (!available || permissionState === "unsupported" || permissionState === "denied") return;
-                    if (permissionState !== "granted") {
-                      const res = await requestPermission();
-                      if (res !== "granted") return;
-                      vibrate(10);
-                    }
-                    advanceToTasks();
-                  }}
-                  className="relative inline-flex h-14 w-full items-center justify-center rounded-xl bg-blue-600 text-white text-[15px] font-semibold tracking-tight transition-colors hover:bg-blue-700 active:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                  whileTap={reduceMotion ? undefined : { scale: 0.98 }}
-                >
-                  Start verification
-                </motion.button>
-                {(!available || permissionState === "denied" || permissionState === "unsupported") ? (
-                  <p className="mt-3 text-center text-xs text-slate-500">
-                    Motion sensors unavailable on this device.
-                  </p>
-                ) : (
-                  <p className="mt-3 text-center text-xs text-slate-500">
-                    No data leaves your device · Takes ~5 seconds
-                  </p>
-                )}
-              </div>
-            </motion.section>
-          ) : null}
+            {/* Start verification CTA */}
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                marginTop: 28,
+                width: "min(320px, 90vw)"
+              }}
+            >
+              <motion.button
+                type="button"
+                onClick={async () => {
+                  if (!available || permissionState === "unsupported" || permissionState === "denied") return;
+                  if (permissionState !== "granted") {
+                    const res = await requestPermission();
+                    if (res !== "granted") return;
+                    vibrate(10);
+                  }
+                  advanceToTasks();
+                }}
+                style={{
+                  width: "100%",
+                  height: 52,
+                  borderRadius: 14,
+                  background: "#1d4ed8",
+                  color: "#fff",
+                  fontSize: 15,
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                  border: "none",
+                  cursor: "pointer"
+                }}
+                whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+              >
+                {permissionState === "needs_gesture" ? "Enable Motion Sensor" : "Start Verification"}
+              </motion.button>
+              <p
+                style={{
+                  marginTop: 10,
+                  textAlign: "center",
+                  fontSize: 11,
+                  color: "rgba(100,116,139,0.8)"
+                }}
+              >
+                {(!available || permissionState === "denied" || permissionState === "unsupported")
+                  ? "Motion sensors unavailable on this device."
+                  : "No data leaves your device · Takes ~5 seconds"}
+              </p>
+            </div>
+          </motion.section>
+        ) : null}
 
           {/* ═══════════════════════════════════════════════════════════
               SCREEN 2 — TASK FLOW
@@ -490,12 +521,14 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
           {screen === "tasks" ? (
             <motion.section
               key="tasks"
-              className="flex min-h-dvh flex-col py-10"
+              className="min-h-dvh"
+              style={{ background: "#0f172a" }}
               initial={reduceMotion ? false : { opacity: 0, y: 16 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
               transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
             >
+              <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
               {/* Header */}
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
@@ -653,6 +686,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
               <div className="mt-6">
                 <Stepper completed={completedCount} />
               </div>
+              </div>
             </motion.section>
           ) : null}
 
@@ -662,12 +696,14 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
           {screen === "result" ? (
             <motion.section
               key="result"
-              className="flex min-h-dvh flex-col py-10"
+              className="min-h-dvh"
+              style={{ background: "#0f172a" }}
               initial={reduceMotion ? false : { opacity: 0, y: 16 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
               transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
             >
+              <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
               {/* Wordmark */}
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
@@ -766,11 +802,11 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                   Return to checkout
                 </motion.button>
               </div>
+              </div>
             </motion.section>
           ) : null}
 
         </AnimatePresence>
-      </div>
     </main>
   );
 }
