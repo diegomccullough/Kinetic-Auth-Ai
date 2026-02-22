@@ -17,6 +17,13 @@ type RiskResult = {
   step_up: StepUp;
 };
 
+type RiskTrace = {
+  lastRiskRequest: Record<string, unknown> | null;
+  lastRiskResponse: RiskResult | null;
+  lastNarrateText: string | null;
+  lastUpdated: string | null;
+};
+
 const RISK_DEFAULT: RiskResult = {
   risk_level: "medium",
   reason: "Defaulting to standard verification.",
@@ -36,49 +43,15 @@ const RISK_COLOR: Record<RiskLevel, string> = {
 };
 
 // ─── AI Trust Panel ───────────────────────────────────────────────────────────
-function AITrustPanel({
-  risk,
-  loading,
-}: {
-  risk: RiskResult | null;
-  loading: boolean;
-}) {
+function AITrustPanel({ risk, loading }: { risk: RiskResult | null; loading: boolean }) {
   const r = risk ?? RISK_DEFAULT;
   const color = RISK_COLOR[r.risk_level];
   const label = r.risk_level.charAt(0).toUpperCase() + r.risk_level.slice(1);
-
   return (
-    <div
-      style={{
-        borderRadius: 12,
-        border: "1px solid rgba(51,65,85,0.8)",
-        background: "rgba(15,23,42,0.85)",
-        padding: "10px 14px",
-        width: "100%",
-        boxSizing: "border-box",
-      }}
-    >
+    <div style={{ borderRadius: 12, border: "1px solid rgba(51,65,85,0.8)", background: "rgba(15,23,42,0.85)", padding: "10px 14px", width: "100%", boxSizing: "border-box" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-        <div
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: loading ? "#475569" : color,
-            flexShrink: 0,
-          }}
-        />
-        <span
-          style={{
-            fontSize: 9,
-            fontWeight: 700,
-            letterSpacing: "0.12em",
-            color: "#64748b",
-            textTransform: "uppercase",
-          }}
-        >
-          AI Trust Engine
-        </span>
+        <div style={{ width: 6, height: 6, borderRadius: "50%", background: loading ? "#475569" : color, flexShrink: 0 }} />
+        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: "#64748b", textTransform: "uppercase" }}>AI Trust Engine</span>
       </div>
       {loading ? (
         <p style={{ fontSize: 11, color: "#475569", margin: 0 }}>Evaluating risk…</p>
@@ -90,22 +63,85 @@ function AITrustPanel({
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 11, color: "#94a3b8" }}>Verification Mode</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#cbd5e1" }}>
-              {STEP_UP_LABEL[r.step_up]}
-            </span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#cbd5e1" }}>{STEP_UP_LABEL[r.step_up]}</span>
           </div>
-          <p
-            style={{
-              fontSize: 10,
-              color: "#64748b",
-              margin: "3px 0 0",
-              lineHeight: 1.5,
-            }}
-          >
-            {r.reason}
-          </p>
+          <p style={{ fontSize: 10, color: "#64748b", margin: "3px 0 0", lineHeight: 1.5 }}>{r.reason}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Debug Drawer ─────────────────────────────────────────────────────────────
+function DebugDrawer({
+  currentStep,
+  tiltFailCount,
+  risk,
+  trace,
+}: {
+  currentStep: string;
+  tiltFailCount: number;
+  risk: RiskResult | null;
+  trace: RiskTrace;
+}) {
+  const [open, setOpen] = useState(false);
+  const r = risk ?? RISK_DEFAULT;
+  return (
+    <div style={{ position: "fixed", top: 12, right: 12, zIndex: 9999 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+          background: "rgba(15,23,42,0.92)", border: "1px solid rgba(51,65,85,0.9)",
+          color: "#64748b", borderRadius: 8, padding: "4px 10px", cursor: "pointer",
+        }}
+      >
+        {open ? "✕ Debug" : "Debug"}
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 6, background: "rgba(10,15,28,0.97)", border: "1px solid rgba(51,65,85,0.8)",
+          borderRadius: 12, padding: "12px 14px", width: 280, maxHeight: "80dvh",
+          overflowY: "auto", fontSize: 10, color: "#94a3b8", lineHeight: 1.6,
+        }}>
+          <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", color: "#475569", textTransform: "uppercase" }}>
+            AI Debug Trace
+          </p>
+          <Row label="currentStep" value={currentStep} />
+          <Row label="tiltFailCount" value={String(tiltFailCount)} />
+          <Row label="risk_level" value={r.risk_level} color={RISK_COLOR[r.risk_level]} />
+          <Row label="step_up" value={r.step_up} />
+          <Row label="reason" value={r.reason} wrap />
+          {trace.lastNarrateText && <Row label="narrateText" value={trace.lastNarrateText} wrap />}
+          {trace.lastUpdated && <Row label="lastUpdated" value={trace.lastUpdated} />}
+          {trace.lastRiskRequest && (
+            <div style={{ marginTop: 8 }}>
+              <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>Last Request</p>
+              <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                {JSON.stringify(trace.lastRiskRequest, null, 2)}
+              </pre>
+            </div>
+          )}
+          {trace.lastRiskResponse && (
+            <div style={{ marginTop: 8 }}>
+              <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>Last Response</p>
+              <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                {JSON.stringify(trace.lastRiskResponse, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value, color, wrap }: { label: string; value: string; color?: string; wrap?: boolean }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 2, alignItems: wrap ? "flex-start" : "center", flexWrap: wrap ? "wrap" : "nowrap" }}>
+      <span style={{ color: "#475569", flexShrink: 0 }}>{label}</span>
+      <span style={{ color: color ?? "#cbd5e1", textAlign: "right", wordBreak: wrap ? "break-word" : "normal" }}>{value}</span>
     </div>
   );
 }
@@ -115,10 +151,12 @@ function VoiceGuidanceButton({
   currentStep,
   riskLevel,
   disabled,
+  onNarrateText,
 }: {
   currentStep: "tilt" | "beat" | "none";
   riskLevel: RiskLevel;
   disabled?: boolean;
+  onNarrateText?: (text: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [fallbackText, setFallbackText] = useState<string | null>(null);
@@ -134,35 +172,30 @@ function VoiceGuidanceButton({
         body: JSON.stringify({
           step: currentStep,
           risk_level: riskLevel,
-          accessibility: {
-            reduce_motion: false,
-            screen_reader: false,
-            voice_guidance: true,
-          },
+          accessibility: { voice_guidance: true },
         }),
       });
-
       const contentType = res.headers.get("Content-Type") ?? "";
       if (contentType.includes("audio")) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
-        audio.play().catch(() => {
-          // Autoplay blocked — silently ignore
-        });
+        audio.play().catch(() => {});
         audio.addEventListener("ended", () => URL.revokeObjectURL(url));
+        onNarrateText?.("[audio played]");
       } else {
         const json = await res.json();
         if (typeof json?.text === "string") {
           setFallbackText(json.text);
+          onNarrateText?.(json.text);
         }
       }
     } catch {
-      // Network error — fail silently
+      // fail silently
     } finally {
       setLoading(false);
     }
-  }, [loading, disabled, currentStep, riskLevel]);
+  }, [loading, disabled, currentStep, riskLevel, onNarrateText]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -171,51 +204,24 @@ function VoiceGuidanceButton({
         onClick={handleClick}
         disabled={loading || disabled}
         style={{
-          height: 36,
-          borderRadius: 10,
-          border: "1px solid rgba(51,65,85,0.8)",
-          background: "rgba(30,41,59,0.8)",
-          color: loading || disabled ? "#475569" : "#93c5fd",
-          fontSize: 12,
-          fontWeight: 500,
-          cursor: loading || disabled ? "default" : "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
-          width: "100%",
-          transition: "color 0.15s",
+          height: 36, borderRadius: 10, border: "1px solid rgba(51,65,85,0.8)",
+          background: "rgba(30,41,59,0.8)", color: loading || disabled ? "#475569" : "#93c5fd",
+          fontSize: 12, fontWeight: 500, cursor: loading || disabled ? "default" : "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          width: "100%", transition: "color 0.15s",
         }}
       >
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path
-            d="M8 1a3 3 0 0 1 3 3v4a3 3 0 1 1-6 0V4a3 3 0 0 1 3-3Z"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-          <path
-            d="M3 8a5 5 0 0 0 10 0M8 13v2"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
+          <path d="M8 1a3 3 0 0 1 3 3v4a3 3 0 1 1-6 0V4a3 3 0 0 1 3-3Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M3 8a5 5 0 0 0 10 0M8 13v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
         {loading ? "Loading…" : "Enable AI Voice Guidance"}
       </button>
-      {fallbackText ? (
-        <p
-          style={{
-            fontSize: 11,
-            color: "#94a3b8",
-            textAlign: "center",
-            lineHeight: 1.5,
-            margin: 0,
-          }}
-        >
+      {fallbackText && (
+        <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", lineHeight: 1.5, margin: 0 }}>
           {fallbackText}
         </p>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -670,35 +676,57 @@ export default function VerificationWizard({
   // ── AI Risk Evaluation ────────────────────────────────────────────────────
   const [riskResult, setRiskResult] = useState<RiskResult | null>(null);
   const [riskLoading, setRiskLoading] = useState(true);
+  const [tiltFailCount, setTiltFailCount] = useState(0);
+  const tiltFailCountRef = useRef(0);
+
+  const [trace, setTrace] = useState<RiskTrace>({
+    lastRiskRequest: null,
+    lastRiskResponse: null,
+    lastNarrateText: null,
+    lastUpdated: null,
+  });
+
+  const callRiskEval = useCallback(async (failCount: number) => {
+    const payload = {
+      traffic_load: 0.85,
+      motion_entropy_score: 0.25,
+      interaction_latency_variance: 0.30,
+      tilt_fail_count: failCount,
+      device_type: "mobile",
+    };
+    setTrace((prev) => ({ ...prev, lastRiskRequest: payload, lastUpdated: new Date().toISOString() }));
+    try {
+      const res = await fetch("/api/risk/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data: RiskResult = await res.json();
+      setRiskResult(data);
+      setTrace((prev) => ({ ...prev, lastRiskResponse: data, lastUpdated: new Date().toISOString() }));
+      return data;
+    } catch {
+      setRiskResult(RISK_DEFAULT);
+      setTrace((prev) => ({ ...prev, lastRiskResponse: RISK_DEFAULT, lastUpdated: new Date().toISOString() }));
+      return RISK_DEFAULT;
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setRiskLoading(true);
-    fetch("/api/risk/evaluate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        traffic_load: 0.8,
-        motion_entropy_score: 0.25,
-        interaction_latency_variance: 0.3,
-        shake_accuracy: 0.6,
-        device_type: "mobile",
-      }),
-    })
-      .then((res) => res.json())
-      .then((data: RiskResult) => {
-        if (!cancelled) setRiskResult(data);
-      })
-      .catch(() => {
-        if (!cancelled) setRiskResult(RISK_DEFAULT);
-      })
-      .finally(() => {
-        if (!cancelled) setRiskLoading(false);
-      });
+    callRiskEval(0).finally(() => {
+      if (!cancelled) setRiskLoading(false);
+    });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeStepUp: StepUp = riskResult?.step_up ?? "tilt";
+
+  const handleNarrateText = useCallback((text: string) => {
+    setTrace((prev) => ({ ...prev, lastNarrateText: text, lastUpdated: new Date().toISOString() }));
+  }, []);
 
   const [screen, setScreen] = useState<Screen>("intro");
   const [motionUnlocked, setMotionUnlocked] = useState(false);
@@ -910,19 +938,32 @@ export default function VerificationWizard({
 
       setInside(inZone);
 
-      // Track time outside circle — triggers beat challenge after GYRO_FAIL_SECONDS
+      // Track time outside circle — triggers tilt-fail re-evaluation + beat challenge
       if (!inZone && !gyroFailTriggeredRef.current) {
         outsideMsRef.current += dtMs;
         if (outsideMsRef.current >= GYRO_FAIL_SECONDS * 1000) {
           gyroFailTriggeredRef.current = true;
           window.cancelAnimationFrame(raf);
-          // Trigger beat challenge if songs available, otherwise just reset timer
-          const triggered = triggerBeatChallenge();
-          if (!triggered) {
-            // No songs: just reset the outside timer and let them keep trying
-            outsideMsRef.current = 0;
-            gyroFailTriggeredRef.current = false;
-          }
+
+          // Increment tilt fail count and re-evaluate risk
+          const newCount = tiltFailCountRef.current + 1;
+          tiltFailCountRef.current = newCount;
+          setTiltFailCount(newCount);
+
+          callRiskEval(newCount).then((updatedRisk) => {
+            if (updatedRisk.risk_level === "high" && newCount >= 1) {
+              // Route to beat challenge
+              const triggered = triggerBeatChallenge();
+              if (!triggered) {
+                outsideMsRef.current = 0;
+                gyroFailTriggeredRef.current = false;
+              }
+            } else {
+              // Medium/low: let user retry tilt
+              outsideMsRef.current = 0;
+              gyroFailTriggeredRef.current = false;
+            }
+          });
           return;
         }
       } else if (inZone) {
@@ -948,7 +989,7 @@ export default function VerificationWizard({
 
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [available, finish, permissionState, reduceMotion, screen, smoothedRef, taskId, triggerBeatChallenge]);
+  }, [available, callRiskEval, finish, permissionState, reduceMotion, screen, smoothedRef, taskId, triggerBeatChallenge]);
 
   const completedCount = useMemo(() => {
     if (screen === "result") return 3;
@@ -1012,8 +1053,20 @@ export default function VerificationWizard({
     return remaining;
   }, [screen, taskId, inside, pulseKey]); // pulseKey forces re-eval on each tick
 
+  // currentStep label for debug drawer
+  const debugStep =
+    screen === "intro" ? "preview" :
+    screen === "tasks" ? `tilt:${taskId}` :
+    screen === "beat" ? "beat" : "complete";
+
   return (
     <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
+      <DebugDrawer
+        currentStep={debugStep}
+        tiltFailCount={tiltFailCount}
+        risk={riskResult}
+        trace={trace}
+      />
       <AnimatePresence mode="popLayout" initial={false}>
 
         {/* ═══════════════════════════════════════════════════════════
@@ -1126,6 +1179,7 @@ export default function VerificationWizard({
                   currentStep={activeStepUp === "beat" ? "beat" : activeStepUp === "none" ? "none" : "tilt"}
                   riskLevel={riskResult?.risk_level ?? "medium"}
                   disabled={riskLoading}
+                  onNarrateText={handleNarrateText}
                 />
               </div>
 
@@ -1378,6 +1432,7 @@ export default function VerificationWizard({
                 <VoiceGuidanceButton
                   currentStep="tilt"
                   riskLevel={riskResult?.risk_level ?? "medium"}
+                  onNarrateText={handleNarrateText}
                 />
               </div>
             </div>
@@ -1388,13 +1443,21 @@ export default function VerificationWizard({
             SCREEN 2b — BEAT CHALLENGE
         ═══════════════════════════════════════════════════════════ */}
         {screen === "beat" && beatSong ? (
-          <BeatChallenge
-            key="beat"
-            song={beatSong}
-            onPass={handleBeatPass}
-            onSkip={handleBeatSkip}
-            reduceMotion={reduceMotion}
-          />
+          <div key="beat" style={{ position: "relative" }}>
+            <BeatChallenge
+              song={beatSong}
+              onPass={handleBeatPass}
+              onSkip={handleBeatSkip}
+              reduceMotion={reduceMotion}
+            />
+            <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", width: "min(320px, 90vw)", zIndex: 100 }}>
+              <VoiceGuidanceButton
+                currentStep="beat"
+                riskLevel={riskResult?.risk_level ?? "medium"}
+                onNarrateText={handleNarrateText}
+              />
+            </div>
+          </div>
         ) : null}
 
         {/* ═══════════════════════════════════════════════════════════

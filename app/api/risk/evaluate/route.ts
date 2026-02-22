@@ -7,7 +7,7 @@ type EvaluateBody = {
   traffic_load: number;
   motion_entropy_score: number;
   interaction_latency_variance: number;
-  shake_accuracy?: number;
+  tilt_fail_count?: number;
   device_type?: string;
 };
 
@@ -17,27 +17,39 @@ type EvaluateResponse = {
   step_up: StepUp;
 };
 
-function isValidNumber(v: unknown): v is number {
-  return typeof v === "number" && isFinite(v);
+function isNumber01(v: unknown): v is number {
+  return typeof v === "number" && isFinite(v) && v >= 0 && v <= 1;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (request.method !== "POST") {
+    return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+  }
+
   let body: EvaluateBody;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { traffic_load, motion_entropy_score, interaction_latency_variance, shake_accuracy } = body;
+  const { traffic_load, motion_entropy_score, interaction_latency_variance, tilt_fail_count } = body;
 
-  if (
-    !isValidNumber(traffic_load) ||
-    !isValidNumber(motion_entropy_score) ||
-    !isValidNumber(interaction_latency_variance)
-  ) {
+  if (!isNumber01(traffic_load)) {
     return NextResponse.json(
-      { error: "Invalid or missing numeric inputs" },
+      { error: "traffic_load must be a number between 0 and 1" },
+      { status: 400 }
+    );
+  }
+  if (!isNumber01(motion_entropy_score)) {
+    return NextResponse.json(
+      { error: "motion_entropy_score must be a number between 0 and 1" },
+      { status: 400 }
+    );
+  }
+  if (!isNumber01(interaction_latency_variance)) {
+    return NextResponse.json(
+      { error: "interaction_latency_variance must be a number between 0 and 1" },
       { status: 400 }
     );
   }
@@ -45,24 +57,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let score = 0;
   const reasons: string[] = [];
 
-  if (traffic_load > 0.7) {
+  if (traffic_load >= 0.75) {
     score += 2;
     reasons.push("elevated traffic load");
   }
-
-  if (motion_entropy_score < 0.3) {
+  if (motion_entropy_score <= 0.30) {
     score += 2;
     reasons.push("low motion entropy");
   }
-
-  if (interaction_latency_variance < 0.2) {
+  if (interaction_latency_variance <= 0.20) {
     score += 1;
-    reasons.push("low interaction latency variance");
+    reasons.push("uniform interaction latency");
   }
-
-  if (isValidNumber(shake_accuracy) && shake_accuracy < 0.5) {
-    score += 2;
-    reasons.push("poor shake accuracy");
+  if (typeof tilt_fail_count === "number" && tilt_fail_count >= 1) {
+    score += 1;
+    reasons.push("prior tilt failure detected");
   }
 
   let risk_level: RiskLevel;
@@ -74,23 +83,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     risk_level = "high";
   }
 
-  const step_up_map: Record<RiskLevel, StepUp> = {
-    low: "none",
-    medium: "tilt",
-    high: "beat",
-  };
+  const step_up: StepUp = risk_level === "low" ? "none" : risk_level === "medium" ? "tilt" : "beat";
 
-  const reason_map: Record<RiskLevel, string> = {
-    low: "No significant risk signals detected.",
-    medium: `Moderate risk detected: ${reasons.join(", ")}.`,
-    high: `High risk detected: ${reasons.join(", ")}.`,
-  };
+  const reason =
+    reasons.length === 0
+      ? "No significant risk signals detected."
+      : reasons.length === 1
+      ? `Risk signal: ${reasons[0]}.`
+      : `Risk signals: ${reasons.slice(0, -1).join(", ")} and ${reasons[reasons.length - 1]}.`;
 
-  const result: EvaluateResponse = {
-    risk_level,
-    reason: reason_map[risk_level],
-    step_up: step_up_map[risk_level],
-  };
-
+  const result: EvaluateResponse = { risk_level, reason, step_up };
   return NextResponse.json(result, { status: 200 });
 }
