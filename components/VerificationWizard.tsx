@@ -481,7 +481,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 </motion.button>
                 {(!available || permissionState === "denied" || permissionState === "unsupported") ? (
                   <p className="mt-3 text-center text-xs text-white/45">
-                    Motion sensors aren't available here.
+                    {"Motion sensors aren't available here."}
                   </p>
                 ) : null}
               </div>
