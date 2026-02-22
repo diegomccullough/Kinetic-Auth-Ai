@@ -567,7 +567,9 @@ function BeatChallenge({
           <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500 mb-2">KINETICAUTH · BEAT CHECK</p>
           <h2 className="text-xl font-bold text-white">Shake to the Beat</h2>
           <p className="mt-1 text-sm text-slate-400">
-            Prove you&apos;re human — shake your phone on every pulse
+            {song.audioSrc
+              ? `${song.artist} is playing — shake your phone on every pulse`
+              : "Prove you&apos;re human — shake your phone on every pulse"}
           </p>
         </div>
 
@@ -808,16 +810,16 @@ export default function VerificationWizard({
 
   const cueLine = useMemo(() => {
     if (screen !== "tasks") return "";
-    if (taskId === "left") return "Tilt left until the ring fills…";
-    if (taskId === "right") return "Now tilt right…";
-    return "Hold steady in the center…";
+    if (taskId === "left") return "Tilt your phone left until the ring fills…";
+    if (taskId === "right") return "Now tilt your phone right…";
+    return "Tilt the ball into the circle and hold it there…";
   }, [screen, taskId]);
 
   const stepTitle = useMemo(() => {
     if (screen !== "tasks") return "";
-    if (taskId === "left") return "Step 1 — Tilt Left";
-    if (taskId === "right") return "Step 2 — Tilt Right";
-    return "Step 3 — Hold Steady";
+    if (taskId === "left") return "Step 1 — Tilt the phone left";
+    if (taskId === "right") return "Step 2 — Tilt the phone right";
+    return "Step 3 — Tilt the ball into the circle";
   }, [screen, taskId]);
 
   // Pick a random song for the beat challenge
@@ -1179,7 +1181,7 @@ export default function VerificationWizard({
                 lineHeight: 1.55
               }}
             >
-              Move your phone to see real-time orientation tracking.
+              First tilt your phone (left, then right). Then tilt the ball into the circle. If the ball stays outside too long, you&apos;ll do a shake-to-the-beat test with the artist&apos;s music.
             </p>
 
             {/* Trust chip + Debug */}
@@ -1407,15 +1409,15 @@ export default function VerificationWizard({
                             animate={{ opacity: 1, scale: 1 }}
                           >
                             {outsideSecsRemaining > 1
-                              ? `Move to center — beat challenge in ${outsideSecsRemaining}s`
+                              ? `Tilt the ball into the circle — beat challenge in ${outsideSecsRemaining}s`
                               : "Beat challenge starting…"}
                           </motion.p>
                         )}
 
                         <div className="w-full px-4 space-y-1.5">
                           <div className="flex justify-between text-[11px] text-slate-500">
-                            <span>Stability</span>
-                            <span>{inside ? "Holding…" : "Move to center"}</span>
+                            <span>Ball in circle</span>
+                            <span>{inside ? "Holding…" : "Tilt the ball into the circle"}</span>
                           </div>
                           <div className="h-2 w-full overflow-hidden rounded-full bg-slate-700">
                             <motion.div
