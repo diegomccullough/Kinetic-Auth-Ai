@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { AnimatePresence, animate, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+<<<<<<< HEAD
 import { Button } from "@/components/ui/Button";
 import { useDeviceOrientation } from "@/lib/useDeviceOrientation";
 import PhoneTiltPreview from "@/components/PhoneTiltPreview";
@@ -23,6 +23,11 @@ const MAX_OFFSET_PX = 92;
 const STABILITY_HOLD_MS = 1500;
 const DOT_FACTOR_PX_PER_DEG = MAX_OFFSET_PX / CLAMP_TILT_DEG;
 const STABILITY_INNER_RADIUS_PX = 39;
+=======
+import PhoneTiltPreview from "@/components/PhoneTiltPreview";
+import { scoreHumanConfidence, type MotionSample, type ScoreBreakdown } from "@/lib/scoring";
+import { useDeviceOrientation } from "@/lib/useDeviceOrientation";
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -38,12 +43,34 @@ function vibrate(pattern: number | number[]) {
   }
 }
 
-function ProgressDots({ step }: { step: Step }) {
-  const steps: Step[] = ["intro", "freeTilt", "directed", "stabilize"];
-  const idx = steps.indexOf(step);
-  const doneIdx = step === "result" ? steps.length - 1 : idx;
+const TASKS_TOTAL = 3;
+const TILT_TASK_THRESHOLD_DEG = 16;
+const TILT_TASK_HOLD_MS = 900;
+
+const HOLD_STEADY_TARGET_MS = 1800;
+const HOLD_STEADY_RADIUS_PX = 34;
+const DOT_CLAMP_DEG = 28;
+const DOT_MAX_OFFSET_PX = 98;
+const DOT_PX_PER_DEG = DOT_MAX_OFFSET_PX / DOT_CLAMP_DEG;
+
+type Screen = "intro" | "tasks" | "result";
+type TaskId = "left" | "right" | "steady";
+
+function ringDashOffset(radius: number, pct: number) {
+  const c = 2 * Math.PI * radius;
+  return c * (1 - clamp(pct, 0, 100) / 100);
+}
+
+// ─── Stepper ────────────────────────────────────────────────────────────────
+function Stepper({ completed }: { completed: number }) {
+  const clampedCompleted = clamp(completed, 0, 3);
+
+  // Line goes from dot 1 center to dot 3 center.
+  // At 0 tasks: 0%, 1 task: 50%, 2 tasks: 100%
+  const linePct = clampedCompleted === 0 ? 0 : clampedCompleted === 1 ? 50 : 100;
 
   return (
+<<<<<<< HEAD
     <div className="flex items-center gap-2">
       {steps.map((_, i) => {
         const active = i === idx && step !== "result";
@@ -58,377 +85,320 @@ function ProgressDots({ step }: { step: Step }) {
           />
         );
       })}
+=======
+    <div className="relative px-1 pt-2 pb-1">
+      {/* Track — spans dot center to dot center (approx left:22px to right:22px) */}
+      <div
+        className="absolute top-1/2 -translate-y-1/2 h-[2px] rounded-full bg-white/12"
+        style={{ left: 22, right: 22 }}
+        aria-hidden="true"
+      />
+      {/* Animated fill — 0%, 50%, 100% of the track width */}
+      <motion.div
+        className="absolute top-1/2 -translate-y-1/2 h-[2px] rounded-full kinetic-progress"
+        initial={false}
+        animate={{ right: linePct === 0 ? "100%" : linePct === 50 ? "50%" : "22px" }}
+        transition={{ type: "spring", stiffness: 200, damping: 28, mass: 0.55 }}
+        style={{ left: 22, filter: "drop-shadow(0 0 10px rgba(34,211,238,0.6))" }}
+        aria-hidden="true"
+      />
+
+      <div className="relative flex items-center justify-between">
+        {([1, 2, 3] as const).map((n) => {
+          const filled = clampedCompleted >= n;
+          const active = clampedCompleted + 1 === n && clampedCompleted < 3;
+          return (
+            <motion.div
+              key={n}
+              className="grid h-11 w-11 place-items-center rounded-full ring-1"
+              style={{
+                background: filled ? "#22D3EE" : "rgba(0,0,0,0.4)",
+                color: filled ? "#000" : "rgba(255,255,255,0.6)",
+                ringColor: filled ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.12)"
+              }}
+              initial={false}
+              animate={{
+                scale: active ? 1.08 : filled ? 1 : 1,
+                boxShadow: filled
+                  ? "0 0 40px rgba(34,211,238,0.65), 0 0 0 1px rgba(255,255,255,0.10) inset"
+                  : active
+                  ? "0 0 0 2px rgba(34,211,238,0.35), 0 0 0 rgba(0,0,0,0)"
+                  : "0 0 0 rgba(0,0,0,0)"
+              }}
+              transition={{ type: "spring", stiffness: 280, damping: 22, mass: 0.4 }}
+            >
+              <span className="text-sm font-bold tabular-nums">{n}</span>
+            </motion.div>
+          );
+        })}
+      </div>
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
     </div>
   );
 }
 
+// ─── Arrow ────────────────────────────────────────────────────────────────────
+function ArrowGlyph({ direction }: { direction: "left" | "right" }) {
+  const flip = direction === "right";
+  return (
+    <svg
+      width="200"
+      height="200"
+      viewBox="0 0 200 200"
+      className="h-[200px] w-[200px]"
+      aria-hidden="true"
+      style={{
+        transform: flip ? "scaleX(-1)" : undefined,
+        filter: "drop-shadow(0 0 28px rgba(34,211,238,0.45)) drop-shadow(0 0 8px rgba(34,211,238,0.25))"
+      }}
+    >
+      <path
+        d="M76 54 L26 100 L76 146"
+        fill="none"
+        stroke="rgba(255,255,255,0.96)"
+        strokeWidth="22"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M38 100 H172"
+        fill="none"
+        stroke="rgba(255,255,255,0.96)"
+        strokeWidth="22"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+// ─── Hold Ring ────────────────────────────────────────────────────────────────
+function HoldRing({
+  pct01,
+  radius = 66,
+  strokeWidth = 11,
+  color = "rgba(34,211,238,0.95)"
+}: {
+  pct01: number;
+  radius?: number;
+  strokeWidth?: number;
+  color?: string;
+}) {
+  const pct = clamp(pct01, 0, 1) * 100;
+  const c = 2 * Math.PI * radius;
+  return (
+    <svg viewBox="0 0 160 160" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
+      <circle cx="80" cy="80" r={radius} stroke="rgba(255,255,255,0.08)" strokeWidth={strokeWidth} fill="none" />
+      <motion.circle
+        cx="80"
+        cy="80"
+        r={radius}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        fill="none"
+        strokeDasharray={c}
+        initial={false}
+        animate={{ strokeDashoffset: ringDashOffset(radius, pct) }}
+        transition={{ type: "spring", stiffness: 200, damping: 28, mass: 0.6 }}
+        style={{ filter: "drop-shadow(0 0 16px rgba(34,211,238,0.45))" }}
+      />
+    </svg>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export type VerificationWizardProps = {
   returnTo?: string;
   onVerified?: (score: ScoreBreakdown) => void;
   onCancel?: () => void;
 };
 
+<<<<<<< HEAD
 export default function VerificationWizard({ returnTo = "/", onVerified, onCancel }: VerificationWizardProps) {
+=======
+export default function VerificationWizard({ onVerified, onCancel: _onCancel }: VerificationWizardProps) {
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
   const reduceMotion = useReducedMotion();
-  const demo = DEMO_MODE;
+  const { beta, gamma, smoothedBeta, smoothedGamma, smoothedRef, available, permissionState, requestPermission } =
+    useDeviceOrientation();
 
-  const [step, setStep] = useState<Step>("intro");
-  const [simulateBot, setSimulateBot] = useState(false);
-  const {
-    beta,
-    gamma,
-    smoothedBeta,
-    smoothedGamma,
-    smoothedRef,
-    available,
-    permissionState,
-    requestPermission
-  } = useDeviceOrientation();
-
-  const baselineRef = useRef<Baseline | null>(null);
-  const directedBaselineRef = useRef<{ beta: number; gamma: number } | null>(null);
-
-  const motionWindowRef = useRef<MotionSample[]>([]);
-  const [score, setScore] = useState<ScoreBreakdown>(() =>
-    scoreHumanConfidence({ motionSamples: [], directedTimings: undefined, stabilityPct: 0, stabilityHoldPct: 0 })
-  );
-  const scoreRef = useRef(score);
-  useEffect(() => {
-    scoreRef.current = score;
-  }, [score]);
-
-  const directedSequence = useMemo(
-    () =>
-      [
-        { id: "left", title: "TILT LEFT", axis: "gamma" as const, dir: -1 },
-        { id: "right", title: "TILT RIGHT", axis: "gamma" as const, dir: 1 },
-        { id: "forward", title: "TILT FORWARD", axis: "beta" as const, dir: 1 }
-      ] as const,
-    []
-  );
-  const [directedIdx, setDirectedIdx] = useState(0);
-  const directedHoldRef = useRef(0);
-  const [directedHoldPct, setDirectedHoldPct] = useState(0);
-  const directedPromptStartRef = useRef<number | null>(null);
-  const directedAdvanceTimerRef = useRef<number | null>(null);
-  const [directedCheckKey, setDirectedCheckKey] = useState(0);
-  const [lastPassed, setLastPassed] = useState<null | "left" | "right" | "forward">(null);
-  const [showDirectedCheck, setShowDirectedCheck] = useState(false);
-  const directedCheckDelayRef = useRef<number | null>(null);
-  const [timings, setTimings] = useState<{
-    timeToLeft?: number;
-    timeToRight?: number;
-    timeToForward?: number;
-  }>({});
-
-  const stableMsRef = useRef(0);
-  const [stablePct, setStablePct] = useState(0);
-  const [stabilityPct, setStabilityPct] = useState(0);
-  const [dot, setDot] = useState({ x: 0, y: 0 });
-  const [inside, setInside] = useState(false);
-  const stabilizeDoneRef = useRef(false);
-  const [stabilizeSuccess, setStabilizeSuccess] = useState(false);
-  const [confettiKey, setConfettiKey] = useState(0);
-  const [baselinePulse, setBaselinePulse] = useState(0);
-
+  const [screen, setScreen] = useState<Screen>("intro");
+  const [taskId, setTaskId] = useState<TaskId>("left");
+  const [confidenceTarget, setConfidenceTarget] = useState(92);
   const [confidenceDisplay, setConfidenceDisplay] = useState(0);
 
-  const [bursts, setBursts] = useState<{ id: string; text: string; x: number }[]>([]);
-  const lastBurstAtPctRef = useRef(0);
+  const [dot, setDot] = useState({ x: 0, y: 0 });
+  const [inside, setInside] = useState(false);
+  const [holdPct, setHoldPct] = useState(0);
+  const [pulseKey, setPulseKey] = useState(0);
 
-  const [climaxOpen, setClimaxOpen] = useState(false);
-  const [climaxTarget, setClimaxTarget] = useState(0);
-  const [climaxDisplay, setClimaxDisplay] = useState(0);
-  const [climaxKey, setClimaxKey] = useState(0);
+  const timingsRef = useRef<{ timeToLeft?: number; timeToRight?: number }>({});
+  const taskStartAtRef = useRef<number | null>(null);
+  const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
 
-  const confetti = useMemo(() => {
-    const colors = ["bg-sky-300", "bg-indigo-300", "bg-emerald-300", "bg-fuchsia-300"];
-    return Array.from({ length: 18 }, (_, i) => {
-      const left = 10 + Math.random() * 80;
-      const top = 18 + Math.random() * 60;
-      const dx = (Math.random() - 0.5) * 220;
-      const dy = -140 - Math.random() * 120;
-      const rot = (Math.random() - 0.5) * 220;
-      const cls = colors[i % colors.length];
-      return { left, top, dx, dy, rot, cls };
-    });
-  }, [confettiKey]);
+  const motionSamplesRef = useRef<MotionSample[]>([]);
+  const stableMsRef = useRef(0);
+  const tiltHoldMsRef = useRef(0);
 
-  const startVerification = useCallback(async () => {
-    const res = await requestPermission();
-    if (res === "granted") {
-      vibrate(10);
-      setStep("freeTilt");
-    }
-  }, [requestPermission]);
+  const [finalScore, setFinalScore] = useState<ScoreBreakdown>(() =>
+    scoreHumanConfidence({ motionSamples: [], directedTimings: undefined, stabilityPct: 0, stabilityHoldPct: 0 })
+  );
 
-  const startBotSimulation = useCallback(async () => {
-    setSimulateBot(true);
-    const res = await requestPermission();
-    if (res === "granted") {
-      vibrate(10);
-      setStep("freeTilt");
-    }
-  }, [requestPermission]);
+  const cueLine = useMemo(() => {
+    if (screen !== "tasks") return "";
+    if (taskId === "left") return "Good — now tilt left…";
+    if (taskId === "right") return "Good — now tilt right…";
+    return "Nice — hold steady…";
+  }, [screen, taskId]);
 
-  const enableMotion = useCallback(async () => {
-    await requestPermission();
-  }, [requestPermission]);
+  const stepTitle = useMemo(() => {
+    if (screen !== "tasks") return "";
+    if (taskId === "left") return "Step 1 — Tilt Left";
+    if (taskId === "right") return "Step 2 — Tilt Right";
+    return "Step 3 — Stabilize";
+  }, [screen, taskId]);
 
-  // Set baseline when stabilization starts (neutral = orientation at step entry).
-  useEffect(() => {
-    if (step !== "stabilize") return;
-    baselineRef.current = { ...smoothedRef.current };
-    setBaselinePulse((p) => p + 1);
+  const advanceToTasks = useCallback(() => {
+    setScreen("tasks");
+    setTaskId("left");
+    timingsRef.current = {};
+    motionSamplesRef.current = [];
     stableMsRef.current = 0;
-    stabilizeDoneRef.current = false;
-    setStabilizeSuccess(false);
-    setStabilityPct(0);
-    setStablePct(0);
+    tiltHoldMsRef.current = 0;
+    taskStartAtRef.current = performance.now();
+    baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
     setDot({ x: 0, y: 0 });
     setInside(false);
-  }, [step, smoothedRef]);
+    setHoldPct(0);
+    setPulseKey((k) => k + 1);
+  }, [smoothedRef]);
 
-  // Reset directed state when entering directed.
-  useEffect(() => {
-    if (step !== "directed") return;
-    setDirectedIdx(0);
-    directedHoldRef.current = 0;
-    setDirectedHoldPct(0);
-    directedPromptStartRef.current = performance.now();
-    setLastPassed(null);
-    setTimings({});
-    directedBaselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
-    if (directedAdvanceTimerRef.current) window.clearTimeout(directedAdvanceTimerRef.current);
-    directedAdvanceTimerRef.current = null;
-  }, [step, smoothedRef]);
-
-  // On entering each directed prompt, snapshot a baseline (baseline-relative detection).
-  useEffect(() => {
-    if (step !== "directed") return;
-    directedBaselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
-    setBaselinePulse((p) => p + 1);
-    directedHoldRef.current = 0;
-    setDirectedHoldPct(0);
-    directedPromptStartRef.current = performance.now();
-  }, [directedIdx, step, smoothedRef]);
-
-  useEffect(() => {
-    // Reset motion window when entering motion-heavy steps.
-    if (step === "freeTilt" || step === "directed" || step === "stabilize") {
-      motionWindowRef.current = [];
-    }
-  }, [step]);
-
-  useEffect(() => {
-    return () => {
-      if (directedAdvanceTimerRef.current) window.clearTimeout(directedAdvanceTimerRef.current);
-      if (directedCheckDelayRef.current) window.clearTimeout(directedCheckDelayRef.current);
-    };
+  const finish = useCallback((score: ScoreBreakdown) => {
+    setFinalScore(score);
+    setConfidenceTarget(87 + Math.floor(Math.random() * 10));
+    setScreen("result");
   }, []);
 
   useEffect(() => {
-    if (directedCheckDelayRef.current) window.clearTimeout(directedCheckDelayRef.current);
-    directedCheckDelayRef.current = null;
+    if (screen !== "tasks") return;
+    if (permissionState !== "granted") return;
+    if (!available) return;
 
-    if (!lastPassed) {
-      setShowDirectedCheck(false);
-      return;
-    }
+    baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
+    taskStartAtRef.current = performance.now();
+    stableMsRef.current = 0;
+    tiltHoldMsRef.current = 0;
+    setHoldPct(0);
+    setInside(false);
+    setDot({ x: 0, y: 0 });
 
-    if (!demo) {
-      setShowDirectedCheck(true);
-      return;
-    }
-
-    setShowDirectedCheck(false);
-    directedCheckDelayRef.current = window.setTimeout(() => setShowDirectedCheck(true), 200);
-
-    return () => {
-      if (directedCheckDelayRef.current) window.clearTimeout(directedCheckDelayRef.current);
-      directedCheckDelayRef.current = null;
-    };
-  }, [demo, lastPassed]);
-
-  // Main RAF loop for directed + stabilize + live confidence.
-  useEffect(() => {
     let raf = 0;
     let last = 0;
+    let completing = false;
+
+    const completeTask = (id: TaskId, stabilityPct: number, stabilityHoldPct: number) => {
+      if (completing) return;
+      completing = true;
+      vibrate([10, 18, 10]);
+      setPulseKey((k) => k + 1);
+
+      const started = taskStartAtRef.current ?? performance.now();
+      const elapsed = Math.max(0, performance.now() - started);
+      if (id === "left" && timingsRef.current.timeToLeft === undefined) timingsRef.current.timeToLeft = Math.round(elapsed);
+      if (id === "right" && timingsRef.current.timeToRight === undefined) timingsRef.current.timeToRight = Math.round(elapsed);
+
+      window.setTimeout(() => {
+        setTaskId((prev) => {
+          if (prev === "left") {
+            baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
+            taskStartAtRef.current = performance.now();
+            completing = false;
+            return "right";
+          }
+          if (prev === "right") {
+            baselineRef.current = { beta: smoothedRef.current.beta, gamma: smoothedRef.current.gamma };
+            taskStartAtRef.current = performance.now();
+            completing = false;
+            return "steady";
+          }
+
+          const score = scoreHumanConfidence({
+            motionSamples: motionSamplesRef.current,
+            directedTimings: timingsRef.current,
+            stabilityPct,
+            stabilityHoldPct
+          });
+          finish(score);
+          return prev;
+        });
+      }, reduceMotion ? 0 : 260);
+    };
 
     const tick = (t: number) => {
       raf = window.requestAnimationFrame(tick);
-      if (t - last < 1000 / MAX_FPS) return;
+      if (t - last < 1000 / 60) return;
       const dtMs = last ? Math.min(60, t - last) : 16;
       last = t;
 
       const s = smoothedRef.current;
-      if (!s) return;
+      motionSamplesRef.current.push({ beta: s.beta, gamma: s.gamma, t });
+      if (motionSamplesRef.current.length > 160) motionSamplesRef.current.shift();
 
-      // Maintain a rolling motion window (~1.6s @ 60fps).
-      if (step === "freeTilt" || step === "directed" || step === "stabilize") {
-        const buf = motionWindowRef.current;
-        const sb = simulateBot ? 0 : s.beta;
-        const sg = simulateBot ? 0 : s.gamma;
-        buf.push({ beta: sb, gamma: sg, t });
-        if (buf.length > 96) buf.shift();
-      }
+      const base = baselineRef.current ?? { beta: s.beta, gamma: s.gamma };
+      const dBeta = s.beta - base.beta;
+      const dGamma = s.gamma - base.gamma;
 
-      let frameStabilityPct = stabilityPct;
-      let frameHoldPct = stablePct;
+      if (taskId === "left" || taskId === "right") {
+        const ok = taskId === "left" ? dGamma < -TILT_TASK_THRESHOLD_DEG : dGamma > TILT_TASK_THRESHOLD_DEG;
+        tiltHoldMsRef.current = ok ? tiltHoldMsRef.current + dtMs : 0;
+        tiltHoldMsRef.current = clamp(tiltHoldMsRef.current, 0, TILT_TASK_HOLD_MS);
+        const pct = tiltHoldMsRef.current / TILT_TASK_HOLD_MS;
+        setHoldPct(pct);
 
-      if (step === "directed") {
-        const current = directedSequence[directedIdx];
-        const base = directedBaselineRef.current ?? { beta: s.beta, gamma: s.gamma };
-        const dBeta = s.beta - base.beta;
-        const dGamma = s.gamma - base.gamma;
-        const ok =
-          current.id === "left"
-            ? dGamma < -DIRECTED_THRESHOLD_DEG
-            : current.id === "right"
-              ? dGamma > DIRECTED_THRESHOLD_DEG
-              : dBeta > DIRECTED_THRESHOLD_DEG;
-
-        directedHoldRef.current = ok ? directedHoldRef.current + dtMs : 0;
-        directedHoldRef.current = clamp(directedHoldRef.current, 0, DIRECTED_HOLD_MS);
-        const holdPct = directedHoldRef.current / DIRECTED_HOLD_MS;
-        setDirectedHoldPct((p) => (Math.abs(p - holdPct) > 0.02 ? holdPct : p));
-
-        if (directedHoldRef.current >= DIRECTED_HOLD_MS && !directedAdvanceTimerRef.current) {
-          const id = current.id;
-          const started = directedPromptStartRef.current ?? performance.now();
-          const elapsed = Math.max(0, performance.now() - started);
-
-          setLastPassed(id);
-          vibrate(30);
-          setDirectedCheckKey((k) => k + 1);
-          setTimings((prev) => {
-            if (id === "left" && prev.timeToLeft === undefined) return { ...prev, timeToLeft: Math.round(elapsed) };
-            if (id === "right" && prev.timeToRight === undefined) return { ...prev, timeToRight: Math.round(elapsed) };
-            if (id === "forward" && prev.timeToForward === undefined) return { ...prev, timeToForward: Math.round(elapsed) };
-            return prev;
-          });
-
-          directedHoldRef.current = 0;
-          setDirectedHoldPct(0);
-
-          directedAdvanceTimerRef.current = window.setTimeout(() => {
-            directedAdvanceTimerRef.current = null;
-            setLastPassed(null);
-            setDirectedIdx((i) => {
-              const next = i + 1;
-              directedPromptStartRef.current = performance.now();
-              if (next >= directedSequence.length) {
-                window.setTimeout(() => setStep("stabilize"), 250);
-                return i;
-              }
-              return next;
-            });
-          }, 520);
+        if (tiltHoldMsRef.current >= TILT_TASK_HOLD_MS) {
+          tiltHoldMsRef.current = 0;
+          setHoldPct(0);
+          completeTask(taskId, 0, 0);
         }
         return;
       }
 
-      if (step === "stabilize") {
-        const base = baselineRef.current ?? s;
-        const dBeta = s.beta - base.beta;
-        const dGamma = s.gamma - base.gamma;
+      const xTarget = clamp(dGamma * DOT_PX_PER_DEG, -DOT_MAX_OFFSET_PX, DOT_MAX_OFFSET_PX);
+      const yTarget = clamp(dBeta * DOT_PX_PER_DEG, -DOT_MAX_OFFSET_PX, DOT_MAX_OFFSET_PX);
+      const dist = Math.hypot(xTarget, yTarget);
+      const inZone = dist <= HOLD_STEADY_RADIUS_PX;
 
-        const x = clamp(dGamma * DOT_FACTOR_PX_PER_DEG, -MAX_OFFSET_PX, MAX_OFFSET_PX);
-        const y = clamp(dBeta * DOT_FACTOR_PX_PER_DEG, -MAX_OFFSET_PX, MAX_OFFSET_PX);
+      setDot((prev) => {
+        const nx = prev.x + (xTarget - prev.x) * 0.18;
+        const ny = prev.y + (yTarget - prev.y) * 0.18;
+        if (Math.abs(prev.x - nx) < 0.2 && Math.abs(prev.y - ny) < 0.2) return prev;
+        return { x: nx, y: ny };
+      });
 
-        const dist = Math.sqrt(x * x + y * y);
-        const insideTarget = simulateBot ? false : dist <= STABILITY_INNER_RADIUS_PX;
+      setInside(inZone);
 
-        // Stability percent is distance-based (for UI + scoring).
-        const stability = clamp(100 * (1 - dist / STABILITY_INNER_RADIUS_PX), 0, 100);
-        frameStabilityPct = stability;
-        setStabilityPct((prev) => (Math.abs(prev - stability) > 0.8 ? stability : prev));
+      stableMsRef.current = inZone
+        ? clamp(stableMsRef.current + dtMs, 0, HOLD_STEADY_TARGET_MS)
+        : clamp(stableMsRef.current - dtMs * 0.6, 0, HOLD_STEADY_TARGET_MS);
 
-        // Accumulate only while inside. Outside pauses + slight decay.
-        stableMsRef.current = insideTarget
-          ? clamp(stableMsRef.current + dtMs, 0, STABILITY_HOLD_MS)
-          : clamp(stableMsRef.current - dtMs * 0.55, 0, STABILITY_HOLD_MS);
+      const hold = stableMsRef.current / HOLD_STEADY_TARGET_MS;
+      setHoldPct(hold);
 
-        const pct = (stableMsRef.current / STABILITY_HOLD_MS) * 100;
-        frameHoldPct = pct;
+      const stabilityPct = clamp(100 * (1 - dist / HOLD_STEADY_RADIUS_PX), 0, 100);
+      const stabilityHoldPct = hold * 100;
 
-        setInside(insideTarget);
-        setStablePct((prev) => (Math.abs(prev - pct) > 0.25 ? pct : prev));
-
-        setDot((prev) => {
-          const dx = Math.abs(prev.x - x);
-          const dy = Math.abs(prev.y - y);
-          if (dx < 0.15 && dy < 0.15) return prev;
-          return { x, y };
-        });
-
-        // Micro burst drama while stabilizing (visual only).
-        if (!simulateBot && insideTarget) {
-          const pctNow = Math.round(pct);
-          if (pctNow >= lastBurstAtPctRef.current + 12) {
-            lastBurstAtPctRef.current = pctNow;
-            const amount = 10 + Math.floor(Math.random() * 7);
-            const id = `${t}-${Math.random().toString(16).slice(2)}`;
-            setBursts((prev) => [...prev.slice(-5), { id, text: `+${amount}% stability acquired`, x: (Math.random() - 0.5) * 36 }]);
-            window.setTimeout(() => {
-              setBursts((prev) => prev.filter((b) => b.id !== id));
-            }, 900);
-          }
-        }
-
-        if (pct >= 100 && !stabilizeDoneRef.current) {
-          stabilizeDoneRef.current = true;
-          setStabilizeSuccess(true);
-          vibrate([18, 24, 18]);
-          setConfettiKey((k) => k + 1);
-
-          const finalBreakdown = scoreHumanConfidence({
-            motionSamples: motionWindowRef.current,
-            directedTimings: timings,
-            stabilityPct: frameStabilityPct,
-            stabilityHoldPct: frameHoldPct
-          });
-          setScore(finalBreakdown);
-          scoreRef.current = finalBreakdown;
-          setClimaxTarget(finalBreakdown.humanConfidence);
-          setClimaxKey((k) => k + 1);
-          if (demo) setClimaxOpen(true);
-
-          window.setTimeout(() => {
-            setClimaxOpen(false);
-            setStep("result");
-            if (finalBreakdown.riskLevel !== "high") {
-              onVerified?.(finalBreakdown);
-            }
-          }, demo ? 950 : 700);
-        }
-        return;
+      if (stableMsRef.current >= HOLD_STEADY_TARGET_MS) {
+        stableMsRef.current = 0;
+        setHoldPct(1);
+        completeTask("steady", stabilityPct, stabilityHoldPct);
       }
-
-      const breakdown = scoreHumanConfidence({
-        motionSamples: motionWindowRef.current,
-        directedTimings: timings,
-        stabilityPct: frameStabilityPct,
-        stabilityHoldPct: frameHoldPct
-      });
-
-      setScore((prev) => {
-        if (Math.abs(prev.humanConfidence - breakdown.humanConfidence) < 1 && prev.riskLevel === breakdown.riskLevel) {
-          const diff =
-            prev.entropyScore !== breakdown.entropyScore ||
-            prev.smoothnessScore !== breakdown.smoothnessScore ||
-            prev.reactionScore !== breakdown.reactionScore ||
-            prev.stabilityScore !== breakdown.stabilityScore;
-          return diff ? breakdown : prev;
-        }
-        return breakdown;
-      });
     };
 
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [directedIdx, directedSequence, onVerified, stablePct, stabilityPct, step, timings, smoothedRef, simulateBot]);
+  }, [available, finish, permissionState, reduceMotion, screen, smoothedRef, taskId]);
 
+<<<<<<< HEAD
   const showAnalysisHUD = step === "freeTilt" || step === "directed" || step === "stabilize";
 
   // Confidence drama (display only): rise gradually, especially during stabilization.
@@ -444,44 +414,39 @@ export default function VerificationWizard({ returnTo = "/", onVerified, onCance
       duration: step === "stabilize" ? 0.85 : 0.55,
       ease: [0.2, 0.9, 0.2, 1],
       onUpdate: (v) => setConfidenceDisplay(v)
-    });
-    return () => controls.stop();
-  }, [confidenceDisplay, confidenceTarget, step]);
+=======
+  const completedCount = useMemo(() => {
+    if (screen === "result") return 3;
+    if (screen !== "tasks") return 0;
+    return taskId === "left" ? 0 : taskId === "right" ? 1 : 2;
+  }, [screen, taskId]);
 
-  // Simulated bot: auto-flag as high risk after a brief “analysis” window.
-  useEffect(() => {
-    if (!simulateBot) return;
-    if (!showAnalysisHUD) return;
-    const id = window.setTimeout(() => {
-      const flagged = scoreHumanConfidence({ motionSamples: Array.from({ length: 32 }, (_, i) => ({ beta: 0, gamma: 0, t: i * 16 })) });
-      setScore({ ...flagged, riskLevel: "high", humanConfidence: Math.min(28, flagged.humanConfidence) });
-      setStep("result");
-      vibrate([8, 22, 8]);
-    }, 2400);
-    return () => window.clearTimeout(id);
-  }, [showAnalysisHUD, simulateBot]);
+  const overallProgressPct = useMemo(() => {
+    const base = screen === "result" ? 3 : completedCount;
+    const pct = ((base + clamp(holdPct, 0, 1)) / TASKS_TOTAL) * 100;
+    return clamp(pct, 0, 100);
+  }, [completedCount, holdPct, screen]);
 
   useEffect(() => {
-    if (!climaxOpen) return;
-    setClimaxDisplay(0);
-    const controls = animate(0, climaxTarget, {
-      duration: reduceMotion ? 0 : 0.75,
-      ease: [0.18, 0.9, 0.2, 1],
-      onUpdate: (v) => setClimaxDisplay(v)
+    if (screen !== "result") return;
+    if (reduceMotion) {
+      setConfidenceDisplay(confidenceTarget);
+      return;
+    }
+    setConfidenceDisplay(0);
+    const controls = animate(0, confidenceTarget, {
+      type: "spring",
+      stiffness: 140,
+      damping: 18,
+      mass: 0.8,
+      onUpdate: (v) => setConfidenceDisplay(Math.round(v))
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
     });
     return () => controls.stop();
-  }, [climaxOpen, climaxTarget, reduceMotion]);
-
-  const delta = useMemo(() => {
-    const base = baselineRef.current;
-    if (!base) return { beta: 0, gamma: 0 };
-    return { beta: smoothedBeta - base.beta, gamma: smoothedGamma - base.gamma };
-  }, [smoothedBeta, smoothedGamma]);
-
-  const directed = directedSequence[directedIdx] ?? directedSequence[0];
-  const directedArrow = directed?.id === "left" ? "←" : directed?.id === "right" ? "→" : "↓";
+  }, [confidenceTarget, reduceMotion, screen]);
 
   return (
+<<<<<<< HEAD
     <div className="relative">
       <div className="mb-4 flex items-center justify-end">
         <ProgressDots step={step} />
@@ -511,16 +476,41 @@ export default function VerificationWizard({ returnTo = "/", onVerified, onCance
             aria-hidden="true"
           />
         ) : null}
+=======
+    <main className="min-h-dvh text-white" style={{ background: "#000" }}>
+      {/* Ambient background */}
+      <div className="pointer-events-none fixed inset-0" aria-hidden="true">
+        <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(34,211,238,0.18)_0%,rgba(99,102,241,0.10)_36%,rgba(0,0,0,1)_72%)]" />
+        {screen === "intro" && (
+          <motion.div
+            className="absolute -inset-16 opacity-60"
+            style={{
+              x: clamp(smoothedGamma, -18, 18) * -0.7,
+              y: clamp(smoothedBeta, -18, 18) * -0.55
+            }}
+          >
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(34,211,238,0.20)_0%,rgba(99,102,241,0.12)_30%,rgba(0,0,0,0)_72%)]" />
+          </motion.div>
+        )}
+      </div>
+
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6">
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
         <AnimatePresence mode="popLayout" initial={false}>
-          {step === "intro" ? (
-            <motion.div
+
+          {/* ═══════════════════════════════════════════════════════════
+              SCREEN 1 — CINEMATIC INTRO
+          ═══════════════════════════════════════════════════════════ */}
+          {screen === "intro" ? (
+            <motion.section
               key="intro"
-              initial={reduceMotion ? false : { opacity: 0, y: 10, scale: 0.99 }}
+              className="flex min-h-dvh flex-col py-10"
+              initial={reduceMotion ? false : { opacity: 0, y: 20, scale: 0.98 }}
               animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
-              exit={reduceMotion ? undefined : { opacity: 0, y: -10, scale: 0.99 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
-              className="space-y-4"
+              exit={reduceMotion ? undefined : { opacity: 0, y: -20, scale: 0.99 }}
+              transition={reduceMotion ? undefined : { type: "spring", stiffness: 170, damping: 24, mass: 0.7 }}
             >
+<<<<<<< HEAD
               <div>
                 <p className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
                   Quick verification required
@@ -618,10 +608,30 @@ export default function VerificationWizard({ returnTo = "/", onVerified, onCance
                     Cancel
                   </button>
                 ) : null}
+=======
+              {/* Wordmark */}
+              <div className="flex items-center justify-center">
+                <p className="text-[10px] font-semibold tracking-[0.52em] text-white/45">KINETICAUTH</p>
               </div>
-            </motion.div>
-          ) : null}
 
+              {/* Phone — 65-75% of screen */}
+              <div
+                className="mx-auto w-full flex-1 items-center justify-center"
+                style={{ minHeight: "62dvh", maxHeight: "72dvh", display: "flex" }}
+              >
+                <div className="h-full w-full" style={{ transform: "scale(1.08)" }}>
+                  <PhoneTiltPreview
+                    beta={beta}
+                    gamma={gamma}
+                    reduceMotion={!!reduceMotion}
+                    variant="cinematic"
+                    showBadge={false}
+                  />
+                </div>
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
+              </div>
+
+<<<<<<< HEAD
           {step === "freeTilt" ? (
             <motion.div
               key="freeTilt"
@@ -633,21 +643,54 @@ export default function VerificationWizard({ returnTo = "/", onVerified, onCance
             >
               <div className="text-center">
                 <p className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+=======
+              {/* Text below phone */}
+              <div className="mt-8 space-y-3 text-center">
+                <h1 className="text-balance text-5xl font-semibold leading-[0.95] tracking-tight">
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
                   Tilt your phone
+                </h1>
+                <p className="text-base text-white/60">
+                  Experience motion-based human verification.
                 </p>
+<<<<<<< HEAD
                 <p className="mt-2 text-sm text-slate-600">Move it smoothly in any direction.</p>
+=======
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
               </div>
 
-              <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[28px] bg-black/25 ring-1 ring-white/10">
-                <PhoneTiltPreview beta={simulateBot ? 0 : beta} gamma={simulateBot ? 0 : gamma} reduceMotion={!!reduceMotion} />
-              </div>
-
-              <div className="space-y-3">
-                <button
+              {/* Begin Verification button */}
+              <div className="mt-10">
+                <motion.button
                   type="button"
-                  onClick={() => setStep("directed")}
-                  className="w-full rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold text-white ring-1 ring-white/15 hover:bg-white/15"
+                  onClick={async () => {
+                    if (!available || permissionState === "unsupported" || permissionState === "denied") return;
+                    if (permissionState !== "granted") {
+                      const res = await requestPermission();
+                      if (res !== "granted") return;
+                      vibrate(10);
+                    }
+                    advanceToTasks();
+                  }}
+                  className="relative inline-flex h-16 w-full items-center justify-center overflow-hidden rounded-2xl bg-white text-black text-base font-semibold tracking-tight ring-1 ring-white/20 transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60"
+                  animate={
+                    reduceMotion
+                      ? undefined
+                      : {
+                          boxShadow: [
+                            "0 0 40px rgba(34,211,238,0.22), 0 18px 60px rgba(0,0,0,0.4)",
+                            "0 0 70px rgba(34,211,238,0.38), 0 18px 60px rgba(0,0,0,0.4)",
+                            "0 0 40px rgba(34,211,238,0.22), 0 18px 60px rgba(0,0,0,0.4)"
+                          ]
+                        }
+                  }
+                  transition={
+                    reduceMotion
+                      ? undefined
+                      : { duration: 2.2, repeat: Infinity, ease: "easeInOut" }
+                  }
                 >
+<<<<<<< HEAD
                   Continue
                 </button>
                 <Link
@@ -663,19 +706,32 @@ export default function VerificationWizard({ returnTo = "/", onVerified, onCance
                 >
                   Back
                 </button>
+=======
+                  Begin Verification
+                </motion.button>
+                {(!available || permissionState === "denied" || permissionState === "unsupported") ? (
+                  <p className="mt-3 text-center text-xs text-white/45">
+                    {"Motion sensors aren't available here."}
+                  </p>
+                ) : null}
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
               </div>
-            </motion.div>
+            </motion.section>
           ) : null}
 
-          {step === "directed" ? (
-            <motion.div
-              key="directed"
-              initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-              exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
-              className="flex h-[68dvh] flex-col overflow-hidden"
+          {/* ═══════════════════════════════════════════════════════════
+              SCREEN 2 — TASK FLOW
+          ═══════════════════════════════════════════════════════════ */}
+          {screen === "tasks" ? (
+            <motion.section
+              key="tasks"
+              className="flex min-h-dvh flex-col py-10"
+              initial={reduceMotion ? false : { opacity: 0, y: 20, scale: 0.985 }}
+              animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: -20, scale: 0.99 }}
+              transition={reduceMotion ? undefined : { type: "spring", stiffness: 180, damping: 24, mass: 0.7 }}
             >
+<<<<<<< HEAD
               <div className="text-center">
                 <p className="text-5xl font-semibold leading-none tracking-tight text-slate-900 sm:text-6xl">
                   {directedArrow}
@@ -685,94 +741,71 @@ export default function VerificationWizard({ returnTo = "/", onVerified, onCance
                 </p>
                 <p className="mt-3 text-sm text-slate-600">Hold for a moment to confirm.</p>
               </div>
+=======
+              {/* Progress stepper */}
+              <div className="space-y-5">
+                <Stepper completed={completedCount} />
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
 
-              <div className="relative mt-4 min-h-0 flex-1 overflow-hidden rounded-[28px] bg-black/25 ring-1 ring-white/10">
-                <div className="absolute inset-0 grid place-items-center">
-                  <motion.div
-                    className="grid h-[220px] w-[220px] place-items-center rounded-full bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.16)_0%,rgba(99,102,241,0.10)_35%,rgba(0,0,0,0)_70%)] ring-1 ring-white/10"
-                    animate={
-                      reduceMotion
-                        ? undefined
-                        : { boxShadow: ["0 0 0 rgba(0,0,0,0)", "0 0 110px rgba(56,189,248,0.16)", "0 0 0 rgba(0,0,0,0)"] }
-                    }
-                    transition={reduceMotion ? undefined : { duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                {/* Step title */}
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.p
+                    key={stepTitle}
+                    className="text-center text-2xl font-semibold tracking-tight text-white"
+                    initial={reduceMotion ? false : { y: 10, opacity: 0 }}
+                    animate={reduceMotion ? undefined : { y: 0, opacity: 1 }}
+                    exit={reduceMotion ? undefined : { y: -10, opacity: 0 }}
+                    transition={reduceMotion ? undefined : { type: "spring", stiffness: 260, damping: 24, mass: 0.55 }}
                   >
-                    <motion.div
-                      className="text-[110px] font-semibold leading-none text-white"
-                      initial={false}
-                      animate={reduceMotion ? undefined : { scale: [1, 1.04, 1] }}
-                      transition={reduceMotion ? undefined : { duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-                      aria-hidden="true"
-                    >
-                      {directedArrow}
-                    </motion.div>
-                  </motion.div>
-                </div>
-
-                <AnimatePresence>
-                  {lastPassed && (!demo || showDirectedCheck) ? (
-                    <motion.div
-                      key={`${lastPassed}-${directedCheckKey}`}
-                      className="pointer-events-none absolute inset-0 grid place-items-center"
-                      initial={{ opacity: 0, scale: 0.88 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 1.05 }}
-                      transition={{ duration: 0.22, ease: "easeOut" }}
-                    >
-                      <motion.div
-                        className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(16,185,129,0.20)_0%,rgba(56,189,248,0.10)_38%,rgba(0,0,0,0)_72%)]"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: [0, 1, 0] }}
-                        transition={{ duration: 0.55, ease: "easeOut" }}
-                      />
-                      <motion.div
-                        className="grid h-24 w-24 place-items-center rounded-[26px] bg-emerald-400/10 ring-1 ring-emerald-300/25"
-                        animate={{ boxShadow: ["0 0 0 rgba(0,0,0,0)", "0 0 90px rgba(16,185,129,0.18)", "0 0 0 rgba(0,0,0,0)"] }}
-                        transition={{ duration: 0.9, ease: "easeInOut" }}
-                      >
-                        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          <motion.path
-                            d="M20 6L9 17l-5-5"
-                            stroke="rgba(167,243,208,0.95)"
-                            strokeWidth="2.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            initial={{ pathLength: 0 }}
-                            animate={{ pathLength: 1 }}
-                            transition={{ duration: 0.35, ease: "easeOut" }}
-                          />
-                        </svg>
-                      </motion.div>
-                    </motion.div>
-                  ) : null}
+                    {stepTitle}
+                  </motion.p>
                 </AnimatePresence>
               </div>
 
-              <div className="mt-4 rounded-2xl bg-black/25 p-3 ring-1 ring-white/10">
-                <div className="flex items-center justify-between text-xs text-white/55">
-                  <span>
-                    Progress <span className="font-semibold text-white/80">{directedIdx + 1}/3</span>
-                  </span>
-                  <span className="tabular-nums">{Math.round(directedHoldPct * 100)}%</span>
-                </div>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {[0, 1, 2].map((i) => {
-                    const done = i < directedIdx;
-                    const active = i === directedIdx;
-                    return (
-                      <div key={i} className={["overflow-hidden rounded-full bg-white/10", demo ? "h-3" : "h-2"].join(" ")}>
-                        <motion.div
-                          className={done ? "h-full bg-emerald-300/90" : "h-full bg-gradient-to-r from-sky-400 to-indigo-400"}
-                          initial={false}
-                          animate={{ width: done ? "100%" : active ? `${Math.round(directedHoldPct * 100)}%` : "0%" }}
-                          transition={{ type: "tween", duration: 0.12, ease: "linear" }}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* Interaction card — 60% height */}
+              <motion.div
+                key={`task-card-${taskId}-${pulseKey}`}
+                className={[
+                  "relative mt-8 w-full overflow-hidden rounded-[28px] ring-1 backdrop-blur",
+                  inside && taskId === "steady"
+                    ? "bg-white/[0.05] ring-[#34D399]/35"
+                    : "bg-white/[0.05] ring-white/12"
+                ].join(" ")}
+                animate={
+                  reduceMotion
+                    ? undefined
+                    : {
+                        boxShadow: [
+                          taskId === "steady"
+                            ? "0 0 0px rgba(0,0,0,0), 0 0 0 1px rgba(52,211,153,0.25)"
+                            : "0 0 0px rgba(0,0,0,0), 0 0 0 1px rgba(34,211,238,0.20)",
+                          taskId === "steady"
+                            ? "0 0 80px rgba(52,211,153,0.18), 0 0 0 1px rgba(52,211,153,0.35)"
+                            : "0 0 80px rgba(34,211,238,0.20), 0 0 0 1px rgba(34,211,238,0.28)",
+                          taskId === "steady"
+                            ? "0 0 0px rgba(0,0,0,0), 0 0 0 1px rgba(52,211,153,0.25)"
+                            : "0 0 0px rgba(0,0,0,0), 0 0 0 1px rgba(34,211,238,0.20)"
+                        ]
+                      }
+                }
+                transition={
+                  reduceMotion
+                    ? undefined
+                    : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
+                }
+                style={{ height: "58dvh", minHeight: 380, maxHeight: 520 }}
+              >
+                {/* Card inner glow */}
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    background:
+                      "radial-gradient(circle_at_50%_30%, rgba(34,211,238,0.14) 0%, rgba(99,102,241,0.08) 38%, rgba(0,0,0,0) 72%)"
+                  }}
+                  aria-hidden="true"
+                />
 
+<<<<<<< HEAD
               <div className="space-y-3">
                 <button
                   type="button"
@@ -787,19 +820,103 @@ export default function VerificationWizard({ returnTo = "/", onVerified, onCance
                 >
                   Use voice verification instead
                 </Link>
+=======
+                <div className="relative grid h-full place-items-center p-6">
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    {taskId === "left" || taskId === "right" ? (
+                      <motion.div
+                        key={taskId}
+                        className="relative grid place-items-center"
+                        initial={reduceMotion ? false : { y: 16, scale: 0.97, opacity: 0 }}
+                        animate={reduceMotion ? undefined : { y: 0, scale: 1, opacity: 1 }}
+                        exit={reduceMotion ? undefined : { y: -16, scale: 0.97, opacity: 0 }}
+                        transition={reduceMotion ? undefined : { type: "spring", stiffness: 260, damping: 24, mass: 0.55 }}
+                      >
+                        <div className="relative h-[240px] w-[240px]">
+                          <HoldRing pct01={holdPct} radius={70} strokeWidth={11} />
+                          <div className="absolute inset-0 grid place-items-center">
+                            <ArrowGlyph direction={taskId} />
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="steady"
+                        className="relative grid place-items-center"
+                        initial={reduceMotion ? false : { y: 16, scale: 0.97, opacity: 0 }}
+                        animate={reduceMotion ? undefined : { y: 0, scale: 1, opacity: 1 }}
+                        exit={reduceMotion ? undefined : { y: -16, scale: 0.97, opacity: 0 }}
+                        transition={reduceMotion ? undefined : { type: "spring", stiffness: 260, damping: 24, mass: 0.55 }}
+                      >
+                        <div className="relative h-[260px] w-[260px]">
+                          <HoldRing pct01={holdPct} color="rgba(52,211,153,0.95)" radius={74} strokeWidth={11} />
+                          <div className="absolute inset-0 grid place-items-center">
+                            <div className="relative h-[86%] w-[86%]">
+                              <div
+                                className="absolute left-1/2 top-1/2 h-[108px] w-[108px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/12"
+                                aria-hidden="true"
+                              />
+                              <motion.div
+                                className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#34D399]"
+                                style={{
+                                  boxShadow: inside
+                                    ? "0 0 40px rgba(52,211,153,0.9), 0 0 80px rgba(34,211,238,0.20)"
+                                    : "0 0 22px rgba(52,211,153,0.50)"
+                                }}
+                                animate={{ x: dot.x, y: dot.y, scale: inside ? 1.12 : 1 }}
+                                transition={{ type: "spring", stiffness: 520, damping: 34, mass: 0.25 }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+
+              {/* Overall progress bar + cue */}
+              <div className="mt-8 space-y-4">
+                <div className="h-4 w-full overflow-hidden rounded-full bg-white/10 ring-1 ring-white/12">
+                  <motion.div
+                    className="h-full rounded-full kinetic-progress"
+                    initial={false}
+                    animate={{ width: `${overallProgressPct}%` }}
+                    transition={{ type: "spring", stiffness: 240, damping: 28, mass: 0.55 }}
+                    style={{ boxShadow: "0 0 24px rgba(34,211,238,0.40), 0 0 8px rgba(34,211,238,0.20)" }}
+                  />
+                </div>
+
+                <AnimatePresence mode="popLayout">
+                  <motion.p
+                    key={cueLine}
+                    className="text-center text-base font-medium text-white/85"
+                    initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                    animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                    exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
+                    transition={reduceMotion ? undefined : { type: "spring", stiffness: 260, damping: 26 }}
+                  >
+                    {cueLine}
+                  </motion.p>
+                </AnimatePresence>
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
               </div>
-            </motion.div>
+            </motion.section>
           ) : null}
 
-          {step === "stabilize" ? (
-            <motion.div
-              key="stabilize"
-              initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-              exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
-              className="flex h-[68dvh] flex-col overflow-hidden"
+          {/* ═══════════════════════════════════════════════════════════
+              SCREEN 3 — VERIFIED
+          ═══════════════════════════════════════════════════════════ */}
+          {screen === "result" ? (
+            <motion.section
+              key="result"
+              className="flex min-h-dvh flex-col py-10"
+              initial={reduceMotion ? false : { opacity: 0, y: 20, scale: 0.985 }}
+              animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: -20, scale: 0.99 }}
+              transition={reduceMotion ? undefined : { type: "spring", stiffness: 180, damping: 24, mass: 0.7 }}
             >
+<<<<<<< HEAD
               <div className="text-center">
                 <p className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
                   Hold steady
@@ -837,153 +954,158 @@ export default function VerificationWizard({ returnTo = "/", onVerified, onCance
                       <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(16,185,129,0.14)_0%,rgba(0,0,0,0)_55%)]" />
                     </motion.div>
                   ) : null}
+=======
+              <div className="flex flex-1 flex-col items-center justify-center">
+                {/* VERIFIED headline */}
+                <div className="relative text-center">
+                  {/* Ambient pulse behind headline */}
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
                   <motion.div
-                    className="absolute inset-0 rounded-full"
-                    animate={{
-                      boxShadow: inside
-                        ? demo
-                          ? "0 0 80px rgba(56,189,248,0.32), 0 0 140px rgba(99,102,241,0.22)"
-                          : "0 0 52px rgba(56,189,248,0.22), 0 0 96px rgba(99,102,241,0.16)"
-                        : demo
-                          ? "0 0 52px rgba(56,189,248,0.12)"
-                          : "0 0 34px rgba(56,189,248,0.08)"
+                    className="pointer-events-none absolute -inset-20 opacity-60"
+                    animate={
+                      reduceMotion
+                        ? undefined
+                        : { opacity: [0.3, 0.75, 0.3], scale: [1, 1.04, 1] }
+                    }
+                    transition={
+                      reduceMotion
+                        ? undefined
+                        : { duration: 2.0, repeat: Infinity, ease: "easeInOut" }
+                    }
+                    style={{
+                      background:
+                        "radial-gradient(circle_at_50%_50%, rgba(52,211,153,0.30) 0%, rgba(34,211,238,0.12) 40%, rgba(0,0,0,0) 72%)"
                     }}
-                    transition={{ type: "spring", stiffness: 170, damping: 18 }}
-                  />
-                  <motion.div
-                    className="absolute inset-[6px] rounded-full ring-1 ring-white/10"
-                    animate={reduceMotion ? undefined : { opacity: [0.12, 0.22, 0.12], scale: [1, 1.01, 1] }}
-                    transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
                     aria-hidden="true"
                   />
-                  <div className="absolute inset-[18px] rounded-full bg-white/[0.03] ring-1 ring-white/10" />
+                  <motion.h2
+                    className="relative text-7xl font-bold tracking-tight text-white"
+                    initial={reduceMotion ? false : { scale: 0.92, opacity: 0 }}
+                    animate={reduceMotion ? undefined : { scale: 1, opacity: 1 }}
+                    transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 18, mass: 0.6 }}
+                    style={{
+                      textShadow: "0 0 60px rgba(52,211,153,0.45), 0 0 120px rgba(34,211,238,0.18)"
+                    }}
+                  >
+                    VERIFIED
+                  </motion.h2>
+                  <motion.p
+                    className="mt-4 text-base text-white/60"
+                    initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                    animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                    transition={reduceMotion ? undefined : { delay: 0.1, type: "spring", stiffness: 200, damping: 22 }}
+                  >
+                    Human presence confirmed.
+                  </motion.p>
+                </div>
 
-                  <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 300 300" aria-hidden="true">
-                    <circle
-                      cx="150"
-                      cy="150"
-                      r="122"
-                      stroke="rgba(255,255,255,0.10)"
-                      strokeWidth={demo ? 14 : 10}
-                      fill="none"
-                    />
-                    <motion.circle
-                      cx="150"
-                      cy="150"
-                      r="122"
-                      stroke="rgba(56,189,248,0.95)"
-                      strokeWidth={demo ? 14 : 10}
-                      strokeLinecap="round"
-                      fill="none"
-                      strokeDasharray={2 * Math.PI * 122}
-                      animate={{ strokeDashoffset: (2 * Math.PI * 122) * (1 - stablePct / 100) }}
-                      transition={{ type: "tween", duration: 0.16, ease: "linear" }}
-                    />
-                  </svg>
+                {/* Confidence circle */}
+                <motion.div
+                  className="mt-12 w-full max-w-[340px] rounded-[28px] bg-white/[0.05] p-8 ring-1 ring-white/10"
+                  initial={reduceMotion ? false : { opacity: 0, y: 16, scale: 0.97 }}
+                  animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+                  transition={reduceMotion ? undefined : { delay: 0.08, type: "spring", stiffness: 200, damping: 22 }}
+                >
+                  <p className="text-center text-[10px] font-semibold tracking-[0.34em] text-white/55">CONFIDENCE</p>
 
-                  <div className="absolute inset-0 grid place-items-center">
-                    <div className={["relative rounded-full", demo ? "h-[250px] w-[250px]" : "h-[208px] w-[208px]"].join(" ")}>
-                      <div
-                        className={[
-                          "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/10",
-                          demo ? "h-[94px] w-[94px]" : "h-[78px] w-[78px]"
-                        ].join(" ")}
-                      />
+                  <div className="mt-6 grid place-items-center">
+                    <div className="relative grid h-[180px] w-[180px] place-items-center">
+                      {/* Soft glow behind ring */}
                       <motion.div
-                        className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-200 shadow-[0_0_22px_rgba(56,189,248,0.65)]"
-                        animate={{
-                          x: dot.x,
-                          y: dot.y,
-                          scale: stablePct >= 100 ? 1.25 : inside ? 1.1 : 1,
-                          boxShadow: inside
-                            ? demo
-                              ? "0 0 52px rgba(56,189,248,1)"
-                              : "0 0 30px rgba(56,189,248,0.95)"
-                            : demo
-                              ? "0 0 28px rgba(56,189,248,0.65)"
-                              : "0 0 18px rgba(56,189,248,0.45)"
+                        className="pointer-events-none absolute inset-0 rounded-full"
+                        animate={
+                          reduceMotion
+                            ? undefined
+                            : { opacity: [0.3, 0.7, 0.3], scale: [0.98, 1.02, 0.98] }
+                        }
+                        transition={
+                          reduceMotion
+                            ? undefined
+                            : { duration: 1.8, repeat: Infinity, ease: "easeInOut" }
+                        }
+                        style={{
+                          background:
+                            "radial-gradient(circle, rgba(52,211,153,0.22) 0%, rgba(34,211,238,0.08) 55%, transparent 75%)"
                         }}
-                        transition={{ type: "spring", stiffness: 260, damping: 22, mass: 0.28 }}
+                        aria-hidden="true"
                       />
+                      <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90" aria-hidden="true">
+                        <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.08)" strokeWidth="4.5" fill="none" />
+                        <motion.circle
+                          cx="22"
+                          cy="22"
+                          r="18"
+                          stroke="rgba(52,211,153,0.95)"
+                          strokeWidth="4.5"
+                          strokeLinecap="round"
+                          fill="none"
+                          strokeDasharray={2 * Math.PI * 18}
+                          initial={{ strokeDashoffset: ringDashOffset(18, 0) }}
+                          animate={{ strokeDashoffset: ringDashOffset(18, confidenceTarget) }}
+                          transition={{ type: "spring", stiffness: 150, damping: 20, mass: 0.7 }}
+                          style={{ filter: "drop-shadow(0 0 18px rgba(52,211,153,0.50))" }}
+                        />
+                      </svg>
+                      <motion.p
+                        className="absolute inset-0 grid place-items-center text-6xl font-semibold tabular-nums tracking-tight text-white"
+                        initial={reduceMotion ? false : { scale: 0.95, opacity: 0 }}
+                        animate={reduceMotion ? undefined : { scale: 1, opacity: 1 }}
+                        transition={reduceMotion ? undefined : { delay: 0.05, type: "spring", stiffness: 200, damping: 18 }}
+                      >
+                        {confidenceDisplay}%
+                      </motion.p>
                     </div>
                   </div>
 
-                  <AnimatePresence>
-                    {inside && stablePct < 100 ? (
-                      <motion.div
-                        className="absolute inset-[10px] rounded-full ring-1 ring-sky-300/25"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: [0.28, 0.65, 0.28], scale: [1, 1.02, 1] }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 1.15, repeat: Infinity, ease: "easeInOut" }}
-                      />
-                    ) : null}
-                  </AnimatePresence>
-
-                  <AnimatePresence>
-                    {stablePct > 85 && stablePct < 100 ? (
-                      <motion.div
-                        className="absolute inset-[2px] rounded-full ring-1 ring-emerald-300/18"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: [0.12, 0.32, 0.12], scale: [1, 1.015, 1] }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.95, repeat: Infinity, ease: "easeInOut" }}
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                  </AnimatePresence>
-
-                  <AnimatePresence>
-                    {stabilizeSuccess ? (
-                      <motion.div
-                        key="stabilize-success"
-                        className="pointer-events-none absolute inset-0 overflow-hidden rounded-full"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.4, ease: "easeOut" }}
-                      >
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(16,185,129,0.22)_0%,rgba(56,189,248,0.14)_35%,rgba(0,0,0,0)_70%)]" />
-                        {confetti.map((p, i) => (
-                          <motion.div
-                            key={i}
-                            className={`absolute h-2.5 w-1.5 rounded-full ${p.cls}`}
-                            style={{ left: `${p.left}%`, top: `${p.top}%` }}
-                            initial={{ opacity: 0, x: 0, y: 0, rotate: 0, scale: 0.9 }}
-                            animate={{ opacity: [0, 1, 1, 0], x: p.dx, y: p.dy, rotate: p.rot, scale: [0.9, 1, 1] }}
-                            transition={{ duration: 1.05, ease: "easeOut" }}
-                          />
-                        ))}
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
-                </div>
+                  {/* Two stat rows only */}
+                  <div className="mt-8 space-y-3">
+                    <motion.div
+                      className="flex items-center justify-between rounded-2xl bg-black/25 px-4 py-3.5 ring-1 ring-white/10"
+                      initial={reduceMotion ? false : { opacity: 0, x: -8 }}
+                      animate={reduceMotion ? undefined : { opacity: 1, x: 0 }}
+                      transition={reduceMotion ? undefined : { delay: 0.15, type: "spring", stiffness: 220, damping: 22 }}
+                    >
+                      <span className="text-sm text-white/65">Reaction</span>
+                      <span className="text-sm font-semibold text-white">Natural</span>
+                    </motion.div>
+                    <motion.div
+                      className="flex items-center justify-between rounded-2xl bg-black/25 px-4 py-3.5 ring-1 ring-white/10"
+                      initial={reduceMotion ? false : { opacity: 0, x: -8 }}
+                      animate={reduceMotion ? undefined : { opacity: 1, x: 0 }}
+                      transition={reduceMotion ? undefined : { delay: 0.22, type: "spring", stiffness: 220, damping: 22 }}
+                    >
+                      <span className="text-sm text-white/65">Stability</span>
+                      <span className="text-sm font-semibold text-white">Human-like</span>
+                    </motion.div>
+                  </div>
+                </motion.div>
               </div>
 
-              <div className="rounded-2xl bg-black/25 p-3 ring-1 ring-white/10">
-                <div className="flex items-center justify-between text-xs text-white/55">
-                  <span>Hold steady</span>
-                  <span className="tabular-nums">{Math.round(stablePct)}%</span>
-                </div>
-                  <div className={["mt-2 overflow-hidden rounded-full bg-white/10", demo ? "h-3" : "h-2"].join(" ")}>
-                  <motion.div
-                    className={[
-                      "h-full rounded-full",
-                      inside ? "bg-gradient-to-r from-emerald-300/90 to-sky-300/90" : "bg-gradient-to-r from-sky-400 to-indigo-400"
-                    ].join(" ")}
-                    initial={false}
-                    animate={{ width: `${Math.round(stablePct)}%` }}
-                    transition={{ type: "tween", duration: 0.12, ease: "linear" }}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <button
+              {/* Return to checkout button */}
+              <div className="mt-10">
+                <motion.button
                   type="button"
-                  onClick={() => setStep("directed")}
-                  className="w-full rounded-2xl bg-transparent px-4 py-3 text-sm font-medium text-white/75 ring-1 ring-white/10 hover:bg-white/5"
+                  onClick={() => onVerified?.(finalScore)}
+                  className="relative inline-flex h-16 w-full items-center justify-center overflow-hidden rounded-2xl text-black text-base font-semibold tracking-tight ring-1 ring-emerald-200/20 transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60"
+                  style={{ background: "#34D399" }}
+                  animate={
+                    reduceMotion
+                      ? undefined
+                      : {
+                          boxShadow: [
+                            "0 0 40px rgba(52,211,153,0.30), 0 18px 60px rgba(0,0,0,0.4)",
+                            "0 0 80px rgba(52,211,153,0.52), 0 18px 60px rgba(0,0,0,0.4)",
+                            "0 0 40px rgba(52,211,153,0.30), 0 18px 60px rgba(0,0,0,0.4)"
+                          ]
+                        }
+                  }
+                  transition={
+                    reduceMotion
+                      ? undefined
+                      : { duration: 2.0, repeat: Infinity, ease: "easeInOut" }
+                  }
                 >
+<<<<<<< HEAD
                   Back
                 </button>
                 <Link
@@ -992,10 +1114,15 @@ export default function VerificationWizard({ returnTo = "/", onVerified, onCance
                 >
                   Use voice verification instead
                 </Link>
+=======
+                  Return to checkout
+                </motion.button>
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
               </div>
-            </motion.div>
+            </motion.section>
           ) : null}
 
+<<<<<<< HEAD
           {step === "result" ? (
             <motion.div
               key="result"
@@ -1060,6 +1187,10 @@ export default function VerificationWizard({ returnTo = "/", onVerified, onCance
       </div>
 
     </div>
+=======
+        </AnimatePresence>
+      </div>
+    </main>
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
   );
 }
-

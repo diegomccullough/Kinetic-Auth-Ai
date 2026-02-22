@@ -80,6 +80,7 @@ export default function VoiceVerificationPage() {
   const passed = result ? result.riskLevel !== "high" : false;
 
   return (
+<<<<<<< HEAD
     <main className="min-h-dvh bg-surface px-4 py-4 sm:py-6">
       <div className="mx-auto w-full max-w-[440px] sm:max-w-verify">
         <div className="relative overflow-hidden rounded-[30px] ring-1 ring-white/10">
@@ -87,6 +88,10 @@ export default function VoiceVerificationPage() {
           <div className="absolute inset-0 bg-[radial-gradient(90%_70%_at_50%_30%,rgba(255,255,255,0.10)_0%,rgba(0,0,0,0)_64%)]" />
 
           <div className="relative px-5 pb-6 pt-6">
+=======
+    <main className="app-shell">
+      <div className="screen-card">
+>>>>>>> 41804d7fd8c3cc3dfd31f08aaaed499e435524e1
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h1 className="text-xl font-semibold leading-tight text-white sm:text-2xl">
@@ -307,8 +312,6 @@ export default function VoiceVerificationPage() {
                 Back to tickets
               </Link>
             </div>
-          </div>
-        </div>
       </div>
     </main>
   );

@@ -271,7 +271,7 @@ export default function SpotlightVerification({
       window.removeEventListener("deviceorientation", onOrientation);
       window.cancelAnimationFrame(raf);
     };
-  }, [onVerified, permission, verificationState]);
+  }, [demo, onVerified, permission, verificationState]);
 
   return (
     <main className="min-h-dvh px-4 py-8">
