@@ -714,7 +714,7 @@ export default function VerificationWizard({
   }, [callRiskEval]);
 
   const handleNarrate = useCallback(async () => {
-    const step = screen === "beat" ? "beat" : "tilt";
+    const step: "tilt" | "beat" = screen === "beat" ? "beat" : "tilt";
     const payload = {
       step,
       risk_level: risk?.risk_level ?? "medium",
@@ -1045,7 +1045,7 @@ export default function VerificationWizard({
     if (screen !== "tasks" || taskId !== "steady" || inside) return null;
     const remaining = Math.ceil((GYRO_FAIL_SECONDS * 1000 - outsideMsRef.current) / 1000);
     return remaining;
-  }, [screen, taskId, inside, pulseKey]); // pulseKey forces re-eval on each tick
+  }, [screen, taskId, inside]);
 
   const currentStep =
     screen === "intro" ? "preview" :
