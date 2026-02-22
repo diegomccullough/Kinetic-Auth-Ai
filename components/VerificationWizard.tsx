@@ -1164,7 +1164,7 @@ function DragChallenge({
         {/* Header */}
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-2">
-            <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH · TAP TEST</p>
+            <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH · DRAG TEST</p>
             <AccessibilityBadge isActive={accessibilityMode} compact />
           </div>
           <h2 className="text-xl font-bold text-white">Drag the Ticket</h2>
@@ -1207,10 +1207,11 @@ function DragChallenge({
             ref={ticketRef}
             onMouseDown={handleDragStart}
             onTouchStart={handleDragStart}
-            className={`absolute cursor-grab active:cursor-grabbing select-none ${isDragging ? "z-50" : "z-10"}`}
+            className="absolute select-none z-10 cursor-grab"
             style={{
               transform: `translate(${ticketPos.x}px, ${ticketPos.y}px)`,
               touchAction: "none",
+              cursor: isDragging ? "grabbing" : "grab",
             }}
           >
             <motion.div
@@ -1239,6 +1240,8 @@ function DragChallenge({
 }
 
 // ─── Multi-Drag Challenge (with music) ─────────────────────────────────────────
+const MULTI_DRAG_TIME_LIMIT_SECONDS = 15;
+
 function MultiDragChallenge({
   song,
   onPass,
@@ -1255,15 +1258,39 @@ function MultiDragChallenge({
   const [ticketsPlaced, setTicketsPlaced] = useState(0);
   const [currentTicketPos, setCurrentTicketPos] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(MULTI_DRAG_TIME_LIMIT_SECONDS);
+  const [isComplete, setIsComplete] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const ticketRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Countdown timer
+  useEffect(() => {
+    if (isComplete) return;
+    
+    const interval = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t <= 1) {
+          clearInterval(interval);
+          // Time's up - fail the challenge
+          if (accessibilityMode) {
+            speakInstruction("Time's up. Verification failed.");
+          }
+          setTimeout(onSkip, 500);
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isComplete, onSkip, accessibilityMode]);
+
   // Play music and speak instructions
   useEffect(() => {
     if (accessibilityMode) {
-      speakInstruction(`Multi-drag challenge. Drag ${MULTI_DRAG_REQUIRED} tickets to the stage while music plays. ${song.artist} is now playing.`);
+      speakInstruction(`Multi-drag challenge. Drag ${MULTI_DRAG_REQUIRED} tickets to the stage in ${MULTI_DRAG_TIME_LIMIT_SECONDS} seconds while music plays. ${song.artist} is now playing.`);
     }
 
     // Play music
@@ -1332,6 +1359,7 @@ function MultiDragChallenge({
       setCurrentTicketPos({ x: 0, y: 0 });
 
       if (newCount >= MULTI_DRAG_REQUIRED) {
+        setIsComplete(true);
         if (accessibilityMode) {
           speakInstruction("All tickets placed. Verification complete.");
         }
@@ -1381,8 +1409,13 @@ function MultiDragChallenge({
           </div>
           <h2 className="text-xl font-bold text-white">Place All Tickets</h2>
           <p className="mt-1 text-sm text-slate-400">
-            Drag each ticket to the stage while the music plays
+            Drag each ticket to the stage in {MULTI_DRAG_TIME_LIMIT_SECONDS} seconds
           </p>
+        </div>
+
+        {/* Timer */}
+        <div className={`rounded-full px-4 py-1.5 text-sm font-semibold ${timeLeft <= 5 ? "bg-red-900/50 text-red-300" : "bg-slate-800 text-slate-300"}`}>
+          {timeLeft}s remaining
         </div>
 
         {/* Song info */}
@@ -1439,10 +1472,11 @@ function MultiDragChallenge({
             ref={ticketRef}
             onMouseDown={handleDragStart}
             onTouchStart={handleDragStart}
-            className={`cursor-grab active:cursor-grabbing select-none ${isDragging ? "z-50 fixed" : ""}`}
+            className={`select-none ${isDragging ? "z-50 fixed" : ""}`}
             style={{
               transform: isDragging ? `translate(${currentTicketPos.x}px, ${currentTicketPos.y}px)` : undefined,
               touchAction: "none",
+              cursor: isDragging ? "grabbing" : "grab",
             }}
           >
             <motion.div
@@ -2166,7 +2200,7 @@ export default function VerificationWizard({
                   </svg>
                 )}
                 <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>
-                  {accessibility.isDesktop ? "Desktop detected — Tap test" : "Mobile detected — Tilt test"}
+                  {accessibility.isDesktop ? "Desktop detected — Drag test" : "Mobile detected — Tilt test"}
                 </span>
               </div>
 
@@ -2243,7 +2277,7 @@ export default function VerificationWizard({
                 }}
               >
                 {accessibility.isDesktop
-                  ? "Complete a quick tap test to continue."
+                  ? "Complete a quick drag test to continue."
                   : "Tilt your phone left and right to continue."}
               </p>
             </div>
@@ -2264,13 +2298,13 @@ export default function VerificationWizard({
                 gap: 8,
               }}
             >
-              {/* Primary CTA - Tap test for desktop, Tilt test for mobile */}
+              {/* Primary CTA - Drag test for desktop, Tilt test for mobile */}
               {accessibility.isDesktop ? (
                 <motion.button
                   type="button"
                   onClick={() => {
                     if (accessibility.screenReaderActive) {
-                      speakInstruction("Starting tap verification test.");
+                      speakInstruction("Starting drag verification test.");
                     }
                     setScreen("drag");
                     setCurrentStep("tilt");
@@ -2289,7 +2323,7 @@ export default function VerificationWizard({
                   }}
                   whileTap={reduceMotion ? undefined : { scale: 0.98 }}
                 >
-                  Start Tap Test
+                  Start Drag Test
                 </motion.button>
               ) : granted ? (
                 <motion.button
@@ -2452,23 +2486,23 @@ export default function VerificationWizard({
               finish(score);
             }}
             onTimeout={() => {
-              // Trigger multi-drag challenge with music
-              const song = songs && songs.length > 0
+              // Trigger multi-drag challenge with random music
+              // Available music files in public/music/
+              const availableSongs: EventSong[] = [
+                { title: "Viva La Vida", artist: "Coldplay", bpm: 138, youtubeId: "", audioSrc: "/music/coldplay.mp3" },
+                { title: "Freestyle", artist: "Lil Baby", bpm: 140, youtubeId: "", audioSrc: "/music/lil-baby.mp3" },
+                { title: "For Certain", artist: "PARTYNEXTDOOR", bpm: 95, youtubeId: "", audioSrc: "/music/partynextdoor.mp3" },
+                { title: "Passionfruit", artist: "Drake", bpm: 111, youtubeId: "", audioSrc: "/music/drake.mp3" },
+                { title: "Skyfall", artist: "Adele", bpm: 68, youtubeId: "", audioSrc: "/music/adele.mp3" },
+                { title: "Crazy In Love", artist: "Beyoncé", bpm: 99, youtubeId: "", audioSrc: "/music/beyonce.mp3" },
+              ];
+              // Pick a random song, preferring event-specific songs if available
+              const eventSong = songs && songs.length > 0
                 ? songs[Math.floor(Math.random() * songs.length)]
                 : null;
-              if (song || highTraffic) {
-                setDragSong(song || { title: "Verification Track", artist: "System", bpm: 120, youtubeId: "" });
-                setScreen("multi_drag");
-              } else {
-                // No songs available, just pass
-                const score = scoreHumanConfidence({
-                  motionSamples: [],
-                  directedTimings: undefined,
-                  stabilityPct: 80,
-                  stabilityHoldPct: 80,
-                });
-                finish(score);
-              }
+              const randomSong = eventSong || availableSongs[Math.floor(Math.random() * availableSongs.length)];
+              setDragSong(randomSong);
+              setScreen("multi_drag");
             }}
             reduceMotion={reduceMotion}
             accessibilityMode={accessibility.screenReaderActive}
