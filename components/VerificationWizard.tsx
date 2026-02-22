@@ -1211,7 +1211,6 @@ export default function VerificationWizard({
     scoreHumanConfidence({ motionSamples: [], directedTimings: undefined, stabilityPct: 0, stabilityHoldPct: 0 })
   );
 
-<<<<<<< HEAD
   const cueLine = useMemo(() => {
     if (screen !== "tasks") return "";
     if (taskId === "left") return "Tilt your phone left until the ring fills…";
@@ -1241,9 +1240,6 @@ export default function VerificationWizard({
     return true;
   }, [pickSong]);
 
-=======
-
->>>>>>> cf69e292ec377b4bf52ff6bb3aa732225842edb3
   const finish = useCallback((score: ScoreBreakdown) => {
     setCurrentStep("complete");
     setFinalScore(score);
