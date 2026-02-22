@@ -22,10 +22,13 @@ type RiskResult = {
 export type VerificationTrace = {
   lastRiskRequest: Record<string, unknown> | null;
   lastRiskResponse: RiskResult | null;
+  lastDecision: string | null;
   lastNarratePayload: Record<string, unknown> | null;
   lastNarrateResult: string | null;
   updatedAt: string | null;
 };
+
+type CurrentStep = "preview" | "tilt" | "beat" | "complete";
 
 const RISK_DEFAULT: RiskResult = {
   risk_level: "medium",
@@ -125,6 +128,7 @@ function DebugDrawer({
         <Row label="risk_level" value={r.risk_level} color={RISK_COLOR[r.risk_level]} />
         <Row label="reason" value={r.reason} wrap />
         <Row label="step_up" value={r.step_up} />
+        {trace.lastDecision != null && <Row label="lastDecision" value={trace.lastDecision} wrap />}
         {trace.updatedAt && <Row label="updatedAt" value={trace.updatedAt} />}
         {trace.lastRiskRequest != null && (
           <div style={{ marginTop: 8 }}>
@@ -381,6 +385,35 @@ function HoldRing({
         transition={{ type: "spring", stiffness: 200, damping: 28, mass: 0.6 }}
       />
     </svg>
+  );
+}
+
+// ─── Beat placeholder (when no song / demo) ────────────────────────────────────
+function BeatPlaceholder({ onComplete }: { onComplete: () => void }) {
+  return (
+    <motion.section
+      key="beat-placeholder"
+      className="min-h-dvh flex flex-col items-center justify-center px-6 py-10"
+      style={{ background: "#0f172a" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <div className="w-full max-w-[380px] flex flex-col items-center gap-6">
+        <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH · STEP-UP</p>
+        <h2 className="text-xl font-bold text-white">Beat Challenge (Step-Up)</h2>
+        <p className="text-sm text-slate-400 text-center">
+          Additional verification step after tilt failure at high risk.
+        </p>
+        <button
+          type="button"
+          onClick={onComplete}
+          className="w-full max-w-[280px] h-12 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors"
+        >
+          Complete
+        </button>
+      </div>
+    </motion.section>
   );
 }
 
@@ -682,11 +715,13 @@ export default function VerificationWizard({
   const [trace, setTrace] = useState<VerificationTrace>({
     lastRiskRequest: null,
     lastRiskResponse: null,
+    lastDecision: null,
     lastNarratePayload: null,
     lastNarrateResult: null,
     updatedAt: null,
   });
 
+  const [currentStep, setCurrentStep] = useState<CurrentStep>("preview");
   const [screen, setScreen] = useState<Screen>("intro");
 
   const callRiskEval = useCallback(async (failCount: number): Promise<RiskResult> => {
@@ -797,14 +832,19 @@ export default function VerificationWizard({
 
   const triggerBeatChallenge = useCallback(() => {
     const song = pickSong();
-    if (!song) return false;
+    setCurrentStep("beat");
+    setScreen("beat");
+    if (!song) {
+      setBeatSong(null);
+      return false;
+    }
     beatTriggeredRef.current = true;
     setBeatSong(song);
-    setScreen("beat");
     return true;
   }, [pickSong]);
 
   const finish = useCallback((score: ScoreBreakdown) => {
+    setCurrentStep("complete");
     setFinalScore(score);
     setConfidenceTarget(87 + Math.floor(Math.random() * 10));
     setScreen("result");
@@ -812,6 +852,7 @@ export default function VerificationWizard({
 
   // Start Verification: always go to tilt (default verification step)
   const advanceToTasks = useCallback(() => {
+    setCurrentStep("tilt");
     setScreen("tasks");
     setTaskId("left");
     timingsRef.current = {};
@@ -946,15 +987,24 @@ export default function VerificationWizard({
           setTiltFailCount(newCount);
 
           callRiskEval(newCount).then((updatedRisk) => {
+            const ts = new Date().toISOString();
             if (updatedRisk.risk_level === "high" && newCount >= 1) {
-              // Route to beat challenge
+              setTrace((prev) => ({
+                ...prev,
+                lastDecision: "Tilt failed; risk high; escalating to beat",
+                updatedAt: ts,
+              }));
               const triggered = triggerBeatChallenge();
               if (!triggered) {
                 outsideMsRef.current = 0;
                 gyroFailTriggeredRef.current = false;
               }
             } else {
-              // Medium/low: let user retry tilt
+              setTrace((prev) => ({
+                ...prev,
+                lastDecision: "Tilt failed; risk not high; retrying tilt",
+                updatedAt: ts,
+              }));
               outsideMsRef.current = 0;
               gyroFailTriggeredRef.current = false;
             }
@@ -1048,15 +1098,12 @@ export default function VerificationWizard({
     return remaining;
   }, [screen, taskId, inside]);
 
-  const currentStep =
-    screen === "intro" ? "preview" :
-    screen === "tasks" ? "tilt" :
-    screen === "beat" ? "beat" : "complete";
+  const debugStepLabel = currentStep === "tilt" && screen === "tasks" ? `tilt:${taskId}` : currentStep;
 
   return (
     <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
       <DebugDrawer
-        currentStep={screen === "tasks" ? `tilt:${taskId}` : currentStep}
+        currentStep={debugStepLabel}
         tiltFailCount={tiltFailCount}
         risk={risk}
         trace={trace}
@@ -1433,26 +1480,30 @@ export default function VerificationWizard({
         ) : null}
 
         {/* ═══════════════════════════════════════════════════════════
-            SCREEN 2b — BEAT CHALLENGE
+            SCREEN 2b — BEAT CHALLENGE (only when tilt failed + risk high)
         ═══════════════════════════════════════════════════════════ */}
-        {screen === "beat" && beatSong ? (
-          <div key="beat" style={{ position: "relative" }}>
-            <BeatChallenge
-              song={beatSong}
-              onPass={handleBeatPass}
-              onSkip={handleBeatSkip}
-              reduceMotion={reduceMotion}
-            />
-            <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", width: "min(320px, 90vw)", zIndex: 100 }}>
-              <VoiceGuidanceButton
-                step="beat"
-                riskLevel={risk?.risk_level ?? "medium"}
-                voiceLoading={voiceLoading}
-                voiceText={voiceText}
-                onNarrate={handleNarrate}
+        {currentStep === "beat" && screen === "beat" ? (
+          beatSong ? (
+            <div key="beat" style={{ position: "relative" }}>
+              <BeatChallenge
+                song={beatSong}
+                onPass={handleBeatPass}
+                onSkip={handleBeatSkip}
+                reduceMotion={reduceMotion}
               />
+              <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", width: "min(320px, 90vw)", zIndex: 100 }}>
+                <VoiceGuidanceButton
+                  step="beat"
+                  riskLevel={risk?.risk_level ?? "medium"}
+                  voiceLoading={voiceLoading}
+                  voiceText={voiceText}
+                  onNarrate={handleNarrate}
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            <BeatPlaceholder key="beat-placeholder" onComplete={handleBeatPass} />
+          )
         ) : null}
 
         {/* ═══════════════════════════════════════════════════════════
