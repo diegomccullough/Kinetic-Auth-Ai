@@ -136,7 +136,7 @@ export default function PhoneTiltPreview({
       <div className="absolute inset-0 grid place-items-center p-4">
         <div
           ref={phoneRef}
-          className="relative w-[78vw] max-w-[480px] select-none"
+          className="relative w-[72%] max-w-[260px] select-none"
           style={{
             aspectRatio: "9 / 19.5",
             transformStyle: "preserve-3d",

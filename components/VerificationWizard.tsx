@@ -13,7 +13,7 @@ import { DEMO_MODE } from "@/lib/demoMode";
 import MotionVarianceGraph from "@/components/MotionVarianceGraph";
 import LiveAnalysisOverlay, { type SignalQuality } from "@/components/LiveAnalysisOverlay";
 
-type Step = "intro" | "freeTilt" | "directed" | "stabilize" | "result";
+type Step = "intro" | "freeTilt" | "directed" | "stabilize" | "climax" | "result";
 type Baseline = { beta: number; gamma: number; alpha: number };
 
 const MAX_FPS = 60;
@@ -139,10 +139,11 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
   const [bursts, setBursts] = useState<{ id: string; text: string; x: number }[]>([]);
   const lastBurstAtPctRef = useRef(0);
 
-  const [climaxOpen, setClimaxOpen] = useState(false);
-  const [climaxTarget, setClimaxTarget] = useState(0);
+  const [telemetryPhase, setTelemetryPhase] = useState(0);
+  const [baselineFlashUntil, setBaselineFlashUntil] = useState(0);
+
+  const [finalClimaxScore, setFinalClimaxScore] = useState<ScoreBreakdown | null>(null);
   const [climaxDisplay, setClimaxDisplay] = useState(0);
-  const [climaxKey, setClimaxKey] = useState(0);
 
   const confetti = useMemo(() => {
     const colors = ["bg-sky-300", "bg-indigo-300", "bg-emerald-300", "bg-fuchsia-300"];
@@ -393,17 +394,8 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
           });
           setScore(finalBreakdown);
           scoreRef.current = finalBreakdown;
-          setClimaxTarget(finalBreakdown.humanConfidence);
-          setClimaxKey((k) => k + 1);
-          if (demo) setClimaxOpen(true);
-
-          window.setTimeout(() => {
-            setClimaxOpen(false);
-            setStep("result");
-            if (finalBreakdown.riskLevel !== "high") {
-              onVerified?.(finalBreakdown);
-            }
-          }, demo ? 950 : 700);
+          setFinalClimaxScore(finalBreakdown);
+          setStep(demo ? "climax" : "result");
         }
         return;
       }
@@ -496,15 +488,58 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
   }, [showAnalysisHUD, simulateBot]);
 
   useEffect(() => {
-    if (!climaxOpen) return;
+    if (!showAnalysisHUD) return;
+    const id = window.setInterval(() => setTelemetryPhase((p) => p + 1), 1150);
+    return () => window.clearInterval(id);
+  }, [showAnalysisHUD]);
+
+  useEffect(() => {
+    if (!showAnalysisHUD) return;
+    if (baselinePulse <= 0) return;
+    setBaselineFlashUntil(Date.now() + 1600);
+  }, [baselinePulse, showAnalysisHUD]);
+
+  const baselineRecalibrated = baselineFlashUntil > Date.now();
+
+  const telemetryLine = useMemo(() => {
+    if (!showAnalysisHUD) return "Ready.";
+    if (simulateBot) {
+      return telemetryPhase % 2 ? "Motion pattern too linear." : "Automation signature detected.";
+    }
+    if (baselineRecalibrated) return "Baseline recalibrated";
+    if (noiseDetected && telemetryPhase % 3 === 2) return "Human motor noise detected";
+    if (telemetryPhase % 3 === 1) return `Signal quality: ${signalQuality}`;
+    return "Analyzing motion entropy…";
+  }, [baselineRecalibrated, noiseDetected, showAnalysisHUD, signalQuality, simulateBot, telemetryPhase]);
+
+  const confidenceColor = useMemo(() => {
+    if (confidenceDisplay < 50) return "rgba(244,63,94,1)";
+    if (confidenceDisplay < 75) return "rgba(251,191,36,1)";
+    return "rgba(52,211,153,1)";
+  }, [confidenceDisplay]);
+
+  useEffect(() => {
+    if (step !== "climax") return;
+    const target = finalClimaxScore?.humanConfidence ?? score.humanConfidence;
     setClimaxDisplay(0);
-    const controls = animate(0, climaxTarget, {
+    const controls = animate(0, target, {
       duration: reduceMotion ? 0 : 0.75,
       ease: [0.18, 0.9, 0.2, 1],
       onUpdate: (v) => setClimaxDisplay(v)
     });
     return () => controls.stop();
-  }, [climaxOpen, climaxTarget, reduceMotion]);
+  }, [finalClimaxScore?.humanConfidence, reduceMotion, score.humanConfidence, step]);
+
+  useEffect(() => {
+    if (step !== "climax") return;
+    const final = finalClimaxScore ?? scoreRef.current;
+    const ms = reduceMotion ? 0 : demo ? 950 : 650;
+    const id = window.setTimeout(() => {
+      setStep("result");
+      if (final.riskLevel !== "high") onVerified?.(final);
+    }, ms);
+    return () => window.clearTimeout(id);
+  }, [demo, onVerified, reduceMotion, finalClimaxScore, step]);
 
   const delta = useMemo(() => {
     const base = baselineRef.current;
@@ -517,47 +552,6 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
 
   return (
     <div className="relative">
-      <AnimatePresence>
-        {demo && climaxOpen ? (
-          <motion.div
-            key={`climax-${climaxKey}`}
-            className="fixed inset-0 z-[200] grid place-items-center bg-black/65 backdrop-blur-md"
-            initial={reduceMotion ? undefined : { opacity: 0 }}
-            animate={reduceMotion ? undefined : { opacity: 1 }}
-            exit={reduceMotion ? undefined : { opacity: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-          >
-            <div className="relative px-6 text-center">
-              <motion.div
-                className="pointer-events-none absolute left-1/2 top-1/2 h-[520px] w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-70"
-                initial={reduceMotion ? undefined : { opacity: 0, scale: 0.86 }}
-                animate={reduceMotion ? undefined : { opacity: [0, 1, 0.45], scale: [0.86, 1.06, 1.12] }}
-                transition={{ duration: 0.95, ease: "easeOut" }}
-                style={{
-                  background:
-                    "radial-gradient(circle at 50% 45%, rgba(56,189,248,0.28) 0%, rgba(99,102,241,0.14) 34%, rgba(0,0,0,0) 70%)",
-                  filter: "blur(2px)"
-                }}
-                aria-hidden="true"
-              />
-
-              <p className="text-xs font-semibold tracking-[0.34em] text-white/65">HUMAN CONFIDENCE:</p>
-              <div className="mt-4 flex items-baseline justify-center gap-2">
-                <motion.span
-                  className="bg-gradient-to-r from-sky-200 via-white to-sky-200 bg-clip-text text-6xl font-semibold tabular-nums tracking-tight text-transparent sm:text-7xl"
-                  style={{ backgroundSize: "220% 100%" }}
-                  animate={reduceMotion ? undefined : { backgroundPosition: ["0% 0%", "220% 0%"] }}
-                  transition={reduceMotion ? undefined : { duration: 1.15, repeat: Infinity, ease: "linear" }}
-                >
-                  {Math.round(climaxDisplay)}%
-                </motion.span>
-              </div>
-              <p className="mt-3 text-sm text-white/60">Behavioral entropy analysis</p>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold tracking-[0.26em] text-white/60">KINETICAUTH</p>
@@ -597,29 +591,6 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
             aria-hidden="true"
           />
         ) : null}
-        <AnimatePresence initial={false}>
-          {showAnalysisHUD ? (
-            <motion.div
-              key="analysis-hud"
-              initial={reduceMotion ? false : { opacity: 0 }}
-              animate={reduceMotion ? undefined : { opacity: 1 }}
-              exit={reduceMotion ? undefined : { opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="pointer-events-none absolute inset-0 z-20"
-            >
-              <LiveAnalysisOverlay
-                enabled={showAnalysisHUD}
-                simulateBot={simulateBot}
-                signalQuality={signalQuality}
-                baselinePulse={baselinePulse}
-                noiseDetected={noiseDetected}
-              />
-              <div className="absolute right-3 top-3 z-30">
-                <MotionVarianceGraph samplesRef={motionWindowRef} enabled={showAnalysisHUD} reduceMotion={!!reduceMotion} />
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
 
         <AnimatePresence mode="popLayout" initial={false}>
           {step === "intro" ? (
@@ -629,7 +600,7 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
               animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -10, scale: 0.99 }}
               transition={{ duration: 0.28, ease: "easeOut" }}
-              className="space-y-4"
+              className="step-layout"
             >
               <div>
                 <p className="text-xs font-semibold tracking-[0.22em] text-white/60">QUICK VERIFICATION</p>
@@ -642,6 +613,60 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                 <p className="mt-2 text-sm text-white/65">
                   This demo uses device orientation to confirm a human-held device. On iOS Safari, motion access requires a tap.
                 </p>
+              </div>
+
+              <div className="interaction-zone bg-black/25 ring-1 ring-white/10">
+                <div className="absolute inset-0 grid place-items-center">
+                  <motion.div
+                    className="grid h-[64%] w-[64%] place-items-center rounded-full ring-1 ring-white/10"
+                    style={{
+                      background:
+                        "radial-gradient(circle at 50% 40%, rgba(56,189,248,0.14) 0%, rgba(99,102,241,0.10) 35%, rgba(0,0,0,0) 70%)"
+                    }}
+                    animate={reduceMotion ? undefined : { boxShadow: ["0 0 0 rgba(0,0,0,0)", "0 0 110px rgba(56,189,248,0.14)", "0 0 0 rgba(0,0,0,0)"] }}
+                    transition={reduceMotion ? undefined : { duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+                    aria-hidden="true"
+                  >
+                    <div className="h-3 w-3 rounded-full bg-sky-200 shadow-[0_0_28px_rgba(56,189,248,0.75)]" />
+                  </motion.div>
+                </div>
+              </div>
+
+              <div className="progress-bar">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400"
+                  initial={false}
+                  animate={{ width: "0%" }}
+                  transition={{ type: "tween", duration: 0.2, ease: "linear" }}
+                />
+              </div>
+
+              <div className="telemetry-block">
+                <p className="text-white/80">Ready to begin verification.</p>
+              </div>
+
+              <div className="confidence-block">
+                <div className="h-12 w-12 shrink-0">
+                  <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90">
+                    <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.12)" strokeWidth="5" fill="none" />
+                    <motion.circle
+                      cx="22"
+                      cy="22"
+                      r="18"
+                      stroke={confidenceColor}
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      fill="none"
+                      strokeDasharray={2 * Math.PI * 18}
+                      animate={{ strokeDashoffset: (2 * Math.PI * 18) * (1 - clamp(confidenceDisplay, 0, 100) / 100) }}
+                      transition={{ type: "spring", stiffness: 140, damping: 20 }}
+                    />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">HUMAN CONFIDENCE</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{Math.round(confidenceDisplay)}%</p>
+                </div>
               </div>
 
               {!available || permissionState === "unsupported" ? (
@@ -741,18 +766,63 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
               transition={{ duration: 0.28, ease: "easeOut" }}
-              className="flex h-[72dvh] flex-col overflow-hidden"
+              className="step-layout"
             >
-              <div className="text-center">
-                <p className="text-xs font-semibold tracking-[0.22em] text-white/60">STEP 1</p>
-                <p className={["mt-2 font-semibold tracking-tight text-white", demo ? "text-5xl" : "text-4xl"].join(" ")}>
-                  Tilt your phone
-                </p>
-                <p className="mt-2 text-sm text-white/65">Cinematic mode — smooth, premium motion.</p>
+              <p className="text-xs font-semibold tracking-[0.22em] text-white/60 text-center">STEP 1</p>
+              <p className={["text-center font-semibold tracking-tight text-white", demo ? "text-5xl" : "text-4xl"].join(" ")}>Tilt your phone</p>
+              <p className="text-center text-sm text-white/65">Cinematic mode — smooth, premium motion.</p>
+
+              <div className="interaction-zone bg-black/25 ring-1 ring-white/10">
+                <div className="absolute inset-0">
+                  <PhoneTiltPreview beta={simulateBot ? 0 : beta} gamma={simulateBot ? 0 : gamma} reduceMotion={!!reduceMotion} />
+                </div>
+                <LiveAnalysisOverlay
+                  enabled={demo && showAnalysisHUD}
+                  simulateBot={simulateBot}
+                  signalQuality={signalQuality}
+                  baselinePulse={baselinePulse}
+                  noiseDetected={noiseDetected}
+                />
+                <div className="graph-container">
+                  <MotionVarianceGraph samplesRef={motionWindowRef} enabled={demo && showAnalysisHUD} reduceMotion={!!reduceMotion} />
+                </div>
               </div>
 
-              <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-[28px] bg-black/25 ring-1 ring-white/10">
-                <PhoneTiltPreview beta={simulateBot ? 0 : beta} gamma={simulateBot ? 0 : gamma} reduceMotion={!!reduceMotion} />
+              <div className="progress-bar">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400"
+                  initial={false}
+                  animate={{ width: `${Math.round(clamp(confidenceDisplay, 0, 100))}%` }}
+                  transition={{ type: "tween", duration: 0.16, ease: "linear" }}
+                />
+              </div>
+
+              <div className="telemetry-block">
+                <p className="text-white/80">{telemetryLine}</p>
+              </div>
+
+              <div className="confidence-block">
+                <div className="h-12 w-12 shrink-0">
+                  <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90">
+                    <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.12)" strokeWidth="5" fill="none" />
+                    <motion.circle
+                      cx="22"
+                      cy="22"
+                      r="18"
+                      stroke={confidenceColor}
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      fill="none"
+                      strokeDasharray={2 * Math.PI * 18}
+                      animate={{ strokeDashoffset: (2 * Math.PI * 18) * (1 - clamp(confidenceDisplay, 0, 100) / 100) }}
+                      transition={{ type: "spring", stiffness: 140, damping: 20 }}
+                    />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">HUMAN CONFIDENCE</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{Math.round(confidenceDisplay)}%</p>
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -787,23 +857,24 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
               transition={{ duration: 0.28, ease: "easeOut" }}
-              className="flex h-[68dvh] flex-col overflow-hidden"
+              className="step-layout"
             >
-              <div className="text-center">
-                <p className="text-xs font-semibold tracking-[0.22em] text-white/60">STEP 2</p>
-                <p className={["mt-2 font-semibold leading-none tracking-tight text-white", demo ? "text-8xl" : "text-7xl"].join(" ")}>
-                  {directedArrow}
-                </p>
-                <p className={["mt-3 font-semibold tracking-tight text-white", demo ? "text-7xl leading-none" : "text-5xl"].join(" ")}>
-                  {directed.title}
-                </p>
-                <p className="mt-3 text-sm text-white/65">Hold for {DIRECTED_HOLD_MS}ms to confirm.</p>
-              </div>
+              <p className="text-xs font-semibold tracking-[0.22em] text-white/60 text-center">STEP 2</p>
+              <p className={["text-center font-semibold tracking-tight text-white", demo ? "text-7xl leading-none" : "text-5xl"].join(" ")}>
+                {directed.title}
+              </p>
+              <p className="text-center text-sm text-white/65">
+                Prompt {directedIdx + 1}/3 • Hold for {DIRECTED_HOLD_MS}ms to confirm.
+              </p>
 
-              <div className="relative mt-4 min-h-0 flex-1 overflow-hidden rounded-[28px] bg-black/25 ring-1 ring-white/10">
+              <div className="interaction-zone bg-black/25 ring-1 ring-white/10">
                 <div className="absolute inset-0 grid place-items-center">
                   <motion.div
-                    className="grid h-[220px] w-[220px] place-items-center rounded-full bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.16)_0%,rgba(99,102,241,0.10)_35%,rgba(0,0,0,0)_70%)] ring-1 ring-white/10"
+                    className="grid h-[78%] w-[78%] place-items-center rounded-full ring-1 ring-white/10"
+                    style={{
+                      background:
+                        "radial-gradient(circle at 50% 40%, rgba(56,189,248,0.14) 0%, rgba(99,102,241,0.10) 35%, rgba(0,0,0,0) 70%)"
+                    }}
                     animate={
                       reduceMotion
                         ? undefined
@@ -823,18 +894,33 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                   </motion.div>
                 </div>
 
+                <LiveAnalysisOverlay
+                  enabled={demo && showAnalysisHUD}
+                  simulateBot={simulateBot}
+                  signalQuality={signalQuality}
+                  baselinePulse={baselinePulse}
+                  noiseDetected={noiseDetected}
+                />
+                <div className="graph-container">
+                  <MotionVarianceGraph samplesRef={motionWindowRef} enabled={demo && showAnalysisHUD} reduceMotion={!!reduceMotion} />
+                </div>
+
                 <AnimatePresence>
                   {lastPassed && (!demo || showDirectedCheck) ? (
                     <motion.div
                       key={`${lastPassed}-${directedCheckKey}`}
                       className="pointer-events-none absolute inset-0 grid place-items-center"
-                      initial={{ opacity: 0, scale: 0.88 }}
+                      initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 1.05 }}
+                      exit={{ opacity: 0, scale: 1.03 }}
                       transition={{ duration: 0.22, ease: "easeOut" }}
                     >
                       <motion.div
-                        className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(16,185,129,0.20)_0%,rgba(56,189,248,0.10)_38%,rgba(0,0,0,0)_72%)]"
+                        className="absolute inset-0"
+                        style={{
+                          background:
+                            "radial-gradient(circle at 50% 45%, rgba(16,185,129,0.18) 0%, rgba(56,189,248,0.10) 38%, rgba(0,0,0,0) 72%)"
+                        }}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: [0, 1, 0] }}
                         transition={{ duration: 0.55, ease: "easeOut" }}
@@ -862,28 +948,40 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                 </AnimatePresence>
               </div>
 
-              <div className="mt-4 rounded-2xl bg-black/25 p-3 ring-1 ring-white/10">
-                <div className="flex items-center justify-between text-xs text-white/55">
-                  <span>
-                    Progress <span className="font-semibold text-white/80">{directedIdx + 1}/3</span>
-                  </span>
-                  <span className="tabular-nums">{Math.round(directedHoldPct * 100)}%</span>
+              <div className="progress-bar">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400"
+                  initial={false}
+                  animate={{ width: `${Math.round(directedHoldPct * 100)}%` }}
+                  transition={{ type: "tween", duration: 0.12, ease: "linear" }}
+                />
+              </div>
+
+              <div className="telemetry-block">
+                <p className="text-white/80">{telemetryLine}</p>
+              </div>
+
+              <div className="confidence-block">
+                <div className="h-12 w-12 shrink-0">
+                  <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90">
+                    <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.12)" strokeWidth="5" fill="none" />
+                    <motion.circle
+                      cx="22"
+                      cy="22"
+                      r="18"
+                      stroke={confidenceColor}
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      fill="none"
+                      strokeDasharray={2 * Math.PI * 18}
+                      animate={{ strokeDashoffset: (2 * Math.PI * 18) * (1 - clamp(confidenceDisplay, 0, 100) / 100) }}
+                      transition={{ type: "spring", stiffness: 140, damping: 20 }}
+                    />
+                  </svg>
                 </div>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {[0, 1, 2].map((i) => {
-                    const done = i < directedIdx;
-                    const active = i === directedIdx;
-                    return (
-                      <div key={i} className={["overflow-hidden rounded-full bg-white/10", demo ? "h-3" : "h-2"].join(" ")}>
-                        <motion.div
-                          className={done ? "h-full bg-emerald-300/90" : "h-full bg-gradient-to-r from-sky-400 to-indigo-400"}
-                          initial={false}
-                          animate={{ width: done ? "100%" : active ? `${Math.round(directedHoldPct * 100)}%` : "0%" }}
-                          transition={{ type: "tween", duration: 0.12, ease: "linear" }}
-                        />
-                      </div>
-                    );
-                  })}
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">HUMAN CONFIDENCE</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{Math.round(confidenceDisplay)}%</p>
                 </div>
               </div>
 
@@ -912,46 +1010,42 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
               transition={{ duration: 0.28, ease: "easeOut" }}
-              className="flex h-[68dvh] flex-col overflow-hidden"
+              className="step-layout"
             >
-              <div className="text-center">
-                <p className="text-xs font-semibold tracking-[0.22em] text-white/60">STEP 3</p>
-                <p className={["mt-2 font-semibold tracking-tight text-white", demo ? "text-5xl" : "text-4xl"].join(" ")}>
-                  Hold steady
-                </p>
-                <p className="mt-2 text-sm text-white/65">Keep the dot centered until complete.</p>
-              </div>
+              <p className="text-xs font-semibold tracking-[0.22em] text-white/60 text-center">STEP 3</p>
+              <p className={["text-center font-semibold tracking-tight text-white", demo ? "text-5xl" : "text-4xl"].join(" ")}>Hold steady</p>
+              <p className="text-center text-sm text-white/65">Keep the dot centered until complete.</p>
 
-              <div className="flex items-center justify-center">
-                <div className={["relative", demo ? "h-[300px] w-[300px]" : "h-[250px] w-[250px]"].join(" ")}>
-                  <div className="pointer-events-none absolute inset-0 z-30">
-                    <AnimatePresence initial={false}>
-                      {bursts.map((b) => (
-                        <motion.div
-                          key={b.id}
-                          initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                          animate={{ opacity: 1, y: -18, scale: 1 }}
-                          exit={{ opacity: 0, y: -28, scale: 1.02 }}
-                          transition={{ duration: 0.55, ease: "easeOut" }}
-                          className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold text-emerald-100 ring-1 ring-emerald-300/20"
-                          style={{ marginLeft: b.x }}
-                        >
-                          {b.text}
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-                  </div>
+              <div className="interaction-zone bg-black/25 ring-1 ring-white/10">
+                <div className="pointer-events-none absolute inset-0 z-30">
+                  <AnimatePresence initial={false}>
+                    {bursts.map((b) => (
+                      <motion.div
+                        key={b.id}
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: -18, scale: 1 }}
+                        exit={{ opacity: 0, y: -28, scale: 1.02 }}
+                        transition={{ duration: 0.55, ease: "easeOut" }}
+                        className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold text-emerald-100 ring-1 ring-emerald-300/20"
+                        style={{ marginLeft: b.x }}
+                      >
+                        {b.text}
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
 
-                  {demo ? (
-                    <motion.div
-                      className="pointer-events-none absolute -inset-16 opacity-80"
-                      style={{ x: dot.x * 0.08, y: dot.y * 0.08 }}
-                      aria-hidden="true"
-                    >
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.22)_0%,rgba(99,102,241,0.14)_30%,rgba(0,0,0,0)_70%)]" />
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(16,185,129,0.14)_0%,rgba(0,0,0,0)_55%)]" />
-                    </motion.div>
-                  ) : null}
+                <LiveAnalysisOverlay
+                  enabled={demo && showAnalysisHUD}
+                  simulateBot={simulateBot}
+                  signalQuality={signalQuality}
+                  baselinePulse={baselinePulse}
+                  noiseDetected={noiseDetected}
+                />
+                <div className="graph-container">
+                  <MotionVarianceGraph samplesRef={motionWindowRef} enabled={demo && showAnalysisHUD} reduceMotion={!!reduceMotion} />
+                </div>
+
                   <motion.div
                     className="absolute inset-0 rounded-full"
                     animate={{
@@ -1072,24 +1166,45 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                       </motion.div>
                     ) : null}
                   </AnimatePresence>
-                </div>
               </div>
 
-              <div className="rounded-2xl bg-black/25 p-3 ring-1 ring-white/10">
-                <div className="flex items-center justify-between text-xs text-white/55">
-                  <span>Hold steady</span>
-                  <span className="tabular-nums">{Math.round(stablePct)}%</span>
+              <div className="progress-bar">
+                <motion.div
+                  className={[
+                    "h-full rounded-full",
+                    inside ? "bg-gradient-to-r from-emerald-300/90 to-sky-300/90" : "bg-gradient-to-r from-sky-400 to-indigo-400"
+                  ].join(" ")}
+                  initial={false}
+                  animate={{ width: `${Math.round(stablePct)}%` }}
+                  transition={{ type: "tween", duration: 0.12, ease: "linear" }}
+                />
+              </div>
+
+              <div className="telemetry-block">
+                <p className="text-white/80">{telemetryLine}</p>
+              </div>
+
+              <div className="confidence-block">
+                <div className="h-12 w-12 shrink-0">
+                  <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90">
+                    <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.12)" strokeWidth="5" fill="none" />
+                    <motion.circle
+                      cx="22"
+                      cy="22"
+                      r="18"
+                      stroke={confidenceColor}
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      fill="none"
+                      strokeDasharray={2 * Math.PI * 18}
+                      animate={{ strokeDashoffset: (2 * Math.PI * 18) * (1 - clamp(confidenceDisplay, 0, 100) / 100) }}
+                      transition={{ type: "spring", stiffness: 140, damping: 20 }}
+                    />
+                  </svg>
                 </div>
-                  <div className={["mt-2 overflow-hidden rounded-full bg-white/10", demo ? "h-3" : "h-2"].join(" ")}>
-                  <motion.div
-                    className={[
-                      "h-full rounded-full",
-                      inside ? "bg-gradient-to-r from-emerald-300/90 to-sky-300/90" : "bg-gradient-to-r from-sky-400 to-indigo-400"
-                    ].join(" ")}
-                    initial={false}
-                    animate={{ width: `${Math.round(stablePct)}%` }}
-                    transition={{ type: "tween", duration: 0.12, ease: "linear" }}
-                  />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">HUMAN CONFIDENCE</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{Math.round(confidenceDisplay)}%</p>
                 </div>
               </div>
 
@@ -1111,6 +1226,80 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
             </motion.div>
           ) : null}
 
+          {step === "climax" ? (
+            <motion.div
+              key="climax"
+              initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+              animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
+              transition={{ duration: 0.28, ease: "easeOut" }}
+              className="step-layout"
+            >
+              <p className="text-xs font-semibold tracking-[0.22em] text-white/60 text-center">VERIFICATION COMPLETE</p>
+              <p className={["text-center font-semibold tracking-tight text-white", demo ? "text-5xl" : "text-4xl"].join(" ")}>
+                Human confidence
+              </p>
+              <p className="text-center text-sm text-white/65">Trust model v1.3 • Finalizing decision</p>
+
+              <div className="interaction-zone bg-black/25 ring-1 ring-white/10">
+                <motion.div
+                  className="absolute inset-0 opacity-70"
+                  initial={reduceMotion ? undefined : { opacity: 0, scale: 0.94 }}
+                  animate={reduceMotion ? undefined : { opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.45, ease: "easeOut" }}
+                  style={{
+                    background:
+                      "radial-gradient(circle at 50% 45%, rgba(56,189,248,0.24) 0%, rgba(99,102,241,0.14) 34%, rgba(0,0,0,0) 70%)"
+                  }}
+                  aria-hidden="true"
+                />
+                <div className="relative text-center">
+                  <p className="text-xs font-semibold tracking-[0.34em] text-white/65">HUMAN CONFIDENCE:</p>
+                  <p className="mt-4 bg-gradient-to-r from-sky-200 via-white to-sky-200 bg-clip-text text-7xl font-semibold tabular-nums tracking-tight text-transparent">
+                    {Math.round(climaxDisplay)}%
+                  </p>
+                </div>
+              </div>
+
+              <div className="progress-bar">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-300/90 to-sky-300/90"
+                  initial={false}
+                  animate={{ width: "100%" }}
+                  transition={{ type: "tween", duration: 0.2, ease: "linear" }}
+                />
+              </div>
+
+              <div className="telemetry-block">
+                <p className="text-white/80">Final model consensus…</p>
+              </div>
+
+              <div className="confidence-block">
+                <div className="h-12 w-12 shrink-0">
+                  <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90">
+                    <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.12)" strokeWidth="5" fill="none" />
+                    <motion.circle
+                      cx="22"
+                      cy="22"
+                      r="18"
+                      stroke={confidenceColor}
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      fill="none"
+                      strokeDasharray={2 * Math.PI * 18}
+                      animate={{ strokeDashoffset: (2 * Math.PI * 18) * (1 - clamp(climaxDisplay, 0, 100) / 100) }}
+                      transition={{ type: "spring", stiffness: 140, damping: 20 }}
+                    />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">HUMAN CONFIDENCE</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{Math.round(climaxDisplay)}%</p>
+                </div>
+              </div>
+            </motion.div>
+          ) : null}
+
           {step === "result" ? (
             <motion.div
               key="result"
@@ -1118,7 +1307,7 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
               animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
               transition={{ duration: 0.28, ease: "easeOut" }}
-              className="space-y-5"
+              className="step-layout"
             >
               <div className="text-center">
                 <p className="text-xs font-semibold tracking-[0.22em] text-white/60">
@@ -1158,6 +1347,58 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
                   </span>{" "}
                   • Risk: <span className="font-semibold text-white">{score.riskLevel}</span>
                 </p>
+              </div>
+
+              <div className="interaction-zone bg-black/25 ring-1 ring-white/10">
+                <div className="absolute inset-0 grid place-items-center">
+                  <div className="grid place-items-center text-center">
+                    <p className="text-7xl font-semibold leading-none text-white" aria-hidden="true">
+                      {score.riskLevel === "high" ? "!" : "✓"}
+                    </p>
+                    <p className="mt-3 text-sm font-medium text-white/70">
+                      {score.riskLevel === "high" ? "Step-up required" : "Checkout unlocked"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="progress-bar">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-300/90 to-sky-300/90"
+                  initial={false}
+                  animate={{ width: "100%" }}
+                  transition={{ type: "tween", duration: 0.2, ease: "linear" }}
+                />
+              </div>
+
+              <div className="telemetry-block">
+                <p className="text-white/80">
+                  {score.riskLevel === "high" ? "Decision: HIGH RISK — step-up required." : "Decision: PASS — checkout unlocked."}
+                </p>
+              </div>
+
+              <div className="confidence-block">
+                <div className="h-12 w-12 shrink-0">
+                  <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90">
+                    <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.12)" strokeWidth="5" fill="none" />
+                    <motion.circle
+                      cx="22"
+                      cy="22"
+                      r="18"
+                      stroke={confidenceColor}
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      fill="none"
+                      strokeDasharray={2 * Math.PI * 18}
+                      animate={{ strokeDashoffset: (2 * Math.PI * 18) * (1 - clamp(confidenceDisplay, 0, 100) / 100) }}
+                      transition={{ type: "spring", stiffness: 140, damping: 20 }}
+                    />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">HUMAN CONFIDENCE</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{Math.round(confidenceDisplay)}%</p>
+                </div>
               </div>
 
               <Card>
@@ -1229,73 +1470,6 @@ export default function VerificationWizard({ onVerified, onCancel }: Verificatio
             </motion.div>
           ) : null}
         </AnimatePresence>
-      </div>
-
-      <div className="pointer-events-none fixed bottom-5 right-5 z-50">
-        <div className="pointer-events-auto rounded-2xl bg-black/60 px-3 py-2 ring-1 ring-white/10 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <div className={["relative", demo ? "h-14 w-14" : "h-11 w-11"].join(" ")}>
-              <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90">
-                <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.12)" strokeWidth={demo ? 5 : 4} fill="none" />
-                <motion.circle
-                  cx="22"
-                  cy="22"
-                  r="18"
-                  stroke={
-                    confidenceDisplay < 50
-                      ? "rgba(244,63,94,1)"
-                      : confidenceDisplay < 75
-                        ? "rgba(251,191,36,1)"
-                        : "rgba(52,211,153,1)"
-                  }
-                  strokeWidth={demo ? 5 : 4}
-                  strokeLinecap="round"
-                  fill="none"
-                  strokeDasharray={2 * Math.PI * 18}
-                  animate={{ strokeDashoffset: (2 * Math.PI * 18) * (1 - clamp(confidenceDisplay, 0, 100) / 100) }}
-                  transition={{ type: "spring", stiffness: 140, damping: 20 }}
-                  style={
-                    demo
-                      ? {
-                          filter:
-                            confidenceDisplay < 50
-                              ? "drop-shadow(0 0 16px rgba(244,63,94,0.55))"
-                              : confidenceDisplay < 75
-                                ? "drop-shadow(0 0 16px rgba(251,191,36,0.55))"
-                                : "drop-shadow(0 0 16px rgba(52,211,153,0.55))"
-                        }
-                      : undefined
-                  }
-                />
-              </svg>
-              <div className="absolute inset-0 grid place-items-center">
-                {demo ? (
-                  <AnimatedNumber
-                    value={clamp(confidenceDisplay, 0, 100)}
-                    duration={0.65}
-                    format={(n) => `${Math.round(n)}%`}
-                    className="text-[12px] font-semibold tabular-nums text-white"
-                  />
-                ) : (
-                  <motion.span
-                    className="text-[11px] font-semibold tabular-nums text-white"
-                    key={Math.round(confidenceDisplay)}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.18, ease: "easeOut" }}
-                  >
-                    {clamp(Math.round(confidenceDisplay), 0, 100)}%
-                  </motion.span>
-                )}
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">HUMAN CONFIDENCE</p>
-              <p className="mt-0.5 text-[11px] text-white/55">{simulateBot ? "Automation classifier" : "Behavioral entropy analysis"}</p>
-            </div>
-          </div>
-        </div>
       </div>
 
       <p className="mt-4 text-center text-xs text-white/45">

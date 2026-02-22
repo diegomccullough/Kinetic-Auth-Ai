@@ -89,8 +89,8 @@ function HomePageClient() {
   const urgent = secondsLeft <= 30;
 
   return (
-    <main className="h-dvh overflow-hidden bg-[radial-gradient(120%_120%_at_50%_0%,rgba(56,189,248,0.18)_0%,rgba(99,102,241,0.14)_32%,rgba(0,0,0,1)_76%)] px-4 py-5 text-white">
-      <div className="mx-auto flex h-full w-full max-w-[720px] flex-col gap-4 overflow-hidden">
+    <main className="app-shell text-white">
+      <div className="screen-card">
         <motion.header
           initial={reduceMotion ? false : { opacity: 0, y: 10 }}
           animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
@@ -259,52 +259,23 @@ function HomePageClient() {
 
         <motion.section
           initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-          animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+          animate={
+            reduceMotion
+              ? undefined
+              : {
+                  opacity: 1,
+                  y: 0,
+                  boxShadow:
+                    verified && unlockFx
+                      ? ["0 0 0 rgba(0,0,0,0)", "0 0 110px rgba(16,185,129,0.14)", "0 0 0 rgba(0,0,0,0)"]
+                      : undefined
+                }
+          }
           transition={{ delay: 0.05, duration: 0.45, ease: "easeOut" }}
           className="relative min-h-0 flex-1 overflow-hidden rounded-[28px] bg-white/[0.04] p-4 ring-1 ring-white/10 backdrop-blur"
         >
-          <AnimatePresence>
-            {verified && unlockFx && !reduceMotion ? (
-              <motion.div
-                key="unlock-glow"
-                className="pointer-events-none absolute -inset-20 opacity-80"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.35, ease: "easeOut" }}
-                aria-hidden="true"
-              >
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(16,185,129,0.22)_0%,rgba(56,189,248,0.14)_35%,rgba(0,0,0,0)_70%)]" />
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-
-          <AnimatePresence>
-            {verified ? (
-              <motion.div
-                key="verified-stamp"
-                className="pointer-events-none absolute right-4 top-4 z-10 rotate-[-10deg]"
-                initial={reduceMotion ? false : { opacity: 0, scale: 0.9, y: -6 }}
-                animate={
-                  reduceMotion
-                    ? undefined
-                    : unlockFx
-                      ? { opacity: 1, scale: 1, y: 0 }
-                      : { opacity: 0.9, scale: 0.96, y: 0 }
-                }
-                exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96 }}
-                transition={{ type: "spring", stiffness: 220, damping: 18, mass: 0.55 }}
-              >
-                <div className="rounded-2xl bg-emerald-400/10 px-4 py-2 ring-1 ring-emerald-300/25 backdrop-blur">
-                  <p className="text-[10px] font-semibold tracking-[0.26em] text-emerald-200/90">VERIFIED HUMAN</p>
-                  <p className="mt-0.5 text-[11px] font-medium text-emerald-100/90">Checkout unlocked</p>
-                </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-
           <div className="flex h-full flex-col gap-4 overflow-hidden">
-            <div className="flex items-start justify-between gap-3">
+            <div className="seat-row">
               <div>
                 <p className="text-xs font-semibold tracking-[0.22em] text-white/60">SEAT</p>
                 <p className="mt-2 text-xl font-semibold tracking-tight">Section B • Row 3</p>
@@ -313,10 +284,23 @@ function HomePageClient() {
                   {verified ? <span className="ml-2 text-emerald-200/90">• Checkout unlocked</span> : null}
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-xs font-semibold tracking-[0.22em] text-white/60">PRICE</p>
-                <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">$299</p>
-                <p className="mt-1 text-xs text-white/55">incl. fees</p>
+              <div className="price-block">
+                <div className="text-right">
+                  <p className="text-xs font-semibold tracking-[0.22em] text-white/60">PRICE</p>
+                  <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">$299</p>
+                  <p className="mt-1 text-xs text-white/55">incl. fees</p>
+                </div>
+                {verified ? (
+                  <motion.div
+                    initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                    animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                    className="rounded-2xl bg-emerald-400/10 px-3 py-2 text-right ring-1 ring-emerald-300/25"
+                  >
+                    <p className="text-[10px] font-semibold tracking-[0.26em] text-emerald-200/90">VERIFIED HUMAN</p>
+                    <p className="mt-0.5 text-[11px] font-medium text-emerald-100/90">Checkout unlocked</p>
+                  </motion.div>
+                ) : null}
               </div>
             </div>
 
@@ -421,10 +405,10 @@ function HomePageClient() {
 
 function HomePageFallback() {
   return (
-    <main className="h-dvh overflow-hidden bg-black px-4 py-5 text-white">
-      <div className="mx-auto flex h-full w-full max-w-[720px] flex-col gap-4 overflow-hidden">
+    <main className="app-shell text-white">
+      <div className="screen-card">
         <div className="h-[260px] rounded-[28px] bg-white/[0.04] ring-1 ring-white/10" />
-        <div className="min-h-0 flex-1 rounded-[28px] bg-white/[0.04] ring-1 ring-white/10" />
+        <div className="rounded-[28px] bg-white/[0.04] ring-1 ring-white/10" style={{ height: 420 }} />
       </div>
     </main>
   );

@@ -163,10 +163,7 @@ export default function MotionVarianceGraph({ samplesRef, enabled, reduceMotion 
   }, [enabled, reduceMotion, samplesRef, seconds, theme]);
 
   return (
-    <div className="rounded-xl bg-black/30 p-2 ring-1 ring-white/10 backdrop-blur">
-      <p className="mb-1 text-[10px] font-semibold tracking-[0.22em] text-white/60">MOTION VARIANCE</p>
-      <canvas ref={canvasRef} className="h-[46px] w-[132px] rounded-md" />
-    </div>
+    <canvas ref={canvasRef} className="h-full w-full" />
   );
 }
 
