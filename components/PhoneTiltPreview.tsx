@@ -8,9 +8,9 @@ function clamp(n: number, min: number, max: number) {
 
 type PhoneTiltVariant = "default" | "cinematic";
 
-const SENSITIVITY = 2.2;
+const SENSITIVITY = 1.8;
 const CLAMP_DEG = 45;
-const SMOOTHING = 0.3;
+const SMOOTHING = 0.2;
 const DEAD_ZONE_DEG = 2;
 
 const VARIANT_TUNING: Record<
@@ -43,11 +43,9 @@ export default function PhoneTiltPreview({
 }: PhoneTiltPreviewProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const phoneRef = useRef<HTMLDivElement | null>(null);
+  const screenInnerRef = useRef<HTMLDivElement | null>(null);
   const bgRef = useRef<HTMLDivElement | null>(null);
   const rimRef = useRef<HTMLDivElement | null>(null);
-
-  // Baseline: capture on first deviceorientation after permission so rotation is relative.
-  const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
 
   const latest = useRef({ beta: 0, gamma: 0 });
   const rafRef = useRef<number | null>(null);
@@ -57,28 +55,25 @@ export default function PhoneTiltPreview({
   }, [beta, gamma]);
 
   useEffect(() => {
-    if (reduceMotion) return;
-    if (baselineRef.current !== null) return;
-    baselineRef.current = { beta, gamma };
-  }, [beta, gamma, reduceMotion]);
-
-  useEffect(() => {
     const root = rootRef.current;
     const phone = phoneRef.current;
+    const screenInner = screenInnerRef.current;
     const bg = bgRef.current;
     const rim = rimRef.current;
-    if (!root || !phone || !bg || !rim) return;
+    if (!root || !phone || !screenInner || !bg || !rim) return;
 
     const tune = VARIANT_TUNING[variant];
 
     if (reduceMotion) {
       phone.style.transform = "perspective(1000px) rotateX(0deg) rotateY(0deg)";
+      screenInner.style.transform = "rotateX(0deg) rotateY(0deg)";
       root.style.boxShadow = "0 22px 70px rgba(0,0,0,0.55), 0 0 70px rgba(34,211,238,0.10)";
       bg.style.transform = "translate3d(0px, 0px, 0)";
       return;
     }
 
     let last = 0;
+    // pos starts at 0,0 so the phone visually begins flat
     const pos = { beta: 0, gamma: 0 };
     const vel = { beta: 0, gamma: 0 };
     const velSmoothed = { beta: 0, gamma: 0 };
@@ -91,15 +86,11 @@ export default function PhoneTiltPreview({
       const dt = clamp((last ? t - last : 16) / 1000, 0.008, 0.05);
       last = t;
 
-      const base = baselineRef.current ?? latest.current;
-      const relBeta = latest.current.beta - base.beta;
-      const relGamma = latest.current.gamma - base.gamma;
-      const dzedBeta = deadZone(relBeta);
-      const dzedGamma = deadZone(relGamma);
-      const scaledBeta = clamp(dzedBeta * SENSITIVITY, -CLAMP_DEG, CLAMP_DEG);
-      const scaledGamma = clamp(dzedGamma * SENSITIVITY, -CLAMP_DEG, CLAMP_DEG);
+      // Use incoming beta/gamma directly (page delivers values already starting from 0)
+      const scaledBeta = clamp(deadZone(latest.current.beta) * SENSITIVITY, -CLAMP_DEG, CLAMP_DEG);
+      const scaledGamma = clamp(deadZone(latest.current.gamma) * SENSITIVITY, -CLAMP_DEG, CLAMP_DEG);
 
-      // Lerp toward target (smoothing factor 0.3)
+      // Lerp toward target (smoothing factor 0.2)
       pos.beta += (scaledBeta - pos.beta) * SMOOTHING;
       pos.gamma += (scaledGamma - pos.gamma) * SMOOTHING;
 
@@ -111,9 +102,14 @@ export default function PhoneTiltPreview({
 
       const rx = -pos.beta;
       const ry = pos.gamma;
+      // Parallax: outer shell 100%, inner screen 70% (counter-rotate 30% in local space)
+      const innerRx = rx * 0.3;
+      const innerRy = ry * 0.3;
 
       phone.style.transformOrigin = "center center";
       phone.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg)`;
+      screenInner.style.transformOrigin = "center center";
+      screenInner.style.transform = `rotateX(${-innerRx}deg) rotateY(${-innerRy}deg)`;
 
       const mag = Math.sqrt(rx * rx + ry * ry);
       const mag01 = clamp(mag / 28, 0, 1);
@@ -188,6 +184,15 @@ export default function PhoneTiltPreview({
             aria-hidden="true"
           />
 
+          <div
+            ref={screenInnerRef}
+            className="absolute inset-0 rounded-[34px]"
+            style={{
+              transformStyle: "preserve-3d",
+              transformOrigin: "center center",
+              willChange: "transform"
+            }}
+          >
           <div className="absolute inset-[10px] overflow-hidden rounded-[26px] bg-black/70 ring-1 ring-white/12">
             <div className="absolute -inset-10 bg-[radial-gradient(circle_at_30%_20%,rgba(34,211,238,0.46)_0%,rgba(99,102,241,0.16)_35%,rgba(0,0,0,1)_72%)]" />
             <div className="absolute -inset-10 bg-[radial-gradient(circle_at_70%_70%,rgba(16,185,129,0.18)_0%,rgba(0,0,0,0)_55%)] opacity-70" />
@@ -199,6 +204,7 @@ export default function PhoneTiltPreview({
                 <p className="text-[10px] font-semibold tracking-[0.22em] text-white/70">MOTION</p>
               </div>
             ) : null}
+          </div>
           </div>
 
           <div className="absolute left-1/2 top-[14px] h-2.5 w-16 -translate-x-1/2 rounded-full bg-white/10 ring-1 ring-white/10" />

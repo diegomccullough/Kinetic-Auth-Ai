@@ -24,31 +24,40 @@ export default function MotionPreviewPage() {
   const latestOrientation = useRef({ beta: 0, gamma: 0 });
   const smoothRef = useRef({ beta: 0, gamma: 0 });
   const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
-  const calibrationTimeoutRef = useRef<
-    number | ReturnType<typeof setTimeout> | null
-  >(null);
+  const animateToZeroUntilRef = useRef<number>(0);
+  const stableLowTiltSinceRef = useRef<number | null>(null);
+  const lastTapRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
 
   const [sensorValues, setSensorValues] = useState({ beta: 0, gamma: 0 });
-  const [calibrationComplete, setCalibrationComplete] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const CALIBRATION_DELAY_MS = 500;
-  const SMOOTHING = 0.3;
+  const SENSITIVITY = 1.8;
+  const SMOOTHING = 0.25;
+  const CLAMP_DEG = 45;
+  const DEAD_ZONE_DEG = 2;
+  const RECAL_ANIM_MS = 300;
+  const SOFT_STAB_THRESHOLD_DEG = 2;
+  const SOFT_STAB_DURATION_MS = 1500;
+  const SOFT_STAB_NUDGE = 0.02;
 
   // Detect initial permission state on mount
   useEffect(() => {
     setPermissionState(detectInitialPermissionState());
   }, []);
 
-  // Reset calibration when permission is not granted (so re-grant triggers fresh calibration)
+  // Reset smooth state and baseline when permission is revoked
   useEffect(() => {
     if (permissionState !== "granted") {
+      smoothRef.current = { beta: 0, gamma: 0 };
       baselineRef.current = null;
-      setCalibrationComplete(false);
+      animateToZeroUntilRef.current = 0;
+      stableLowTiltSinceRef.current = null;
+      setSensorValues({ beta: 0, gamma: 0 });
     }
   }, [permissionState]);
 
-  // Attach deviceorientation listener immediately after permission; only store raw beta/gamma (do NOT capture baseline here)
+  // Attach deviceorientation listener
   useEffect(() => {
     if (permissionState !== "granted") return;
 
@@ -58,50 +67,80 @@ export default function MotionPreviewPage() {
     };
 
     window.addEventListener("deviceorientation", handleOrientation, { passive: true });
-
-    // After 500ms, capture baseline from latestOrientation at that moment; only then enable motion
-    calibrationTimeoutRef.current = window.setTimeout(() => {
-      baselineRef.current = {
-        beta: latestOrientation.current.beta,
-        gamma: latestOrientation.current.gamma
-      };
-      setCalibrationComplete(true);
-    }, CALIBRATION_DELAY_MS);
-
     return () => {
       window.removeEventListener("deviceorientation", handleOrientation);
-      if (calibrationTimeoutRef.current) {
-        window.clearTimeout(calibrationTimeoutRef.current);
-        calibrationTimeoutRef.current = null;
-      }
     };
   }, [permissionState]);
 
-  // Apply motion only after baseline is set: relative to baseline, smoothing 0.3 (dead zone, sensitivity, clamp in PhoneTiltPreview)
+  // Double-tap recalibration (no navigation)
+  const handlePreviewPointerDown = useCallback(() => {
+    if (permissionState !== "granted") return;
+    const now = Date.now();
+    if (now - lastTapRef.current < 400) {
+      lastTapRef.current = 0;
+      const raw = latestOrientation.current;
+      baselineRef.current = { beta: raw.beta, gamma: raw.gamma };
+      animateToZeroUntilRef.current = now + RECAL_ANIM_MS;
+      stableLowTiltSinceRef.current = null;
+      setToast("Orientation recalibrated");
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
+    lastTapRef.current = now;
+  }, [permissionState]);
+
+  // Visual stabilization + recalibration animation + soft stabilization
   useEffect(() => {
     if (permissionState !== "granted") return;
 
+    smoothRef.current = { beta: 0, gamma: 0 };
+
     let last = 0;
+    const deadZone = (v: number) => (Math.abs(v) < DEAD_ZONE_DEG ? 0 : v);
 
     const tick = (t: number) => {
       rafRef.current = window.requestAnimationFrame(tick);
       if (t - last < 1000 / 60) return;
       last = t;
-
-      const latest = latestOrientation.current;
+      const now = Date.now();
+      const raw = latestOrientation.current;
       const base = baselineRef.current;
 
-      if (!calibrationComplete || base === null) {
-        setSensorValues({ beta: 0, gamma: 0 });
-        smoothRef.current = { beta: 0, gamma: 0 };
+      // Recalibration: animate display to 0 over ~300ms
+      if (animateToZeroUntilRef.current > 0) {
+        const s = smoothRef.current;
+        s.beta += (0 - s.beta) * 0.25;
+        s.gamma += (0 - s.gamma) * 0.25;
+        setSensorValues({ beta: parseFloat(s.beta.toFixed(2)), gamma: parseFloat(s.gamma.toFixed(2)) });
+        if (now >= animateToZeroUntilRef.current) {
+          animateToZeroUntilRef.current = 0;
+          smoothRef.current = { beta: 0, gamma: 0 };
+          setSensorValues({ beta: 0, gamma: 0 });
+        }
         return;
       }
 
-      const relBeta = latest.beta - base.beta;
-      const relGamma = latest.gamma - base.gamma;
+      // Relative to baseline when set
+      const relBeta = base ? raw.beta - base.beta : raw.beta;
+      const relGamma = base ? raw.gamma - base.gamma : raw.gamma;
+      let targetBeta = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(relBeta) * SENSITIVITY));
+      let targetGamma = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(relGamma) * SENSITIVITY));
+
+      // Soft stabilization: if tilt magnitude < 2° for 1500ms, nudge baseline toward current
+      const mag = Math.hypot(targetBeta, targetGamma);
+      if (mag < SOFT_STAB_THRESHOLD_DEG && base) {
+        if (stableLowTiltSinceRef.current === null) stableLowTiltSinceRef.current = now;
+        else if (now - stableLowTiltSinceRef.current >= SOFT_STAB_DURATION_MS) {
+          base.beta += (raw.beta - base.beta) * SOFT_STAB_NUDGE;
+          base.gamma += (raw.gamma - base.gamma) * SOFT_STAB_NUDGE;
+        }
+      } else {
+        stableLowTiltSinceRef.current = null;
+      }
+
       const s = smoothRef.current;
-      s.beta = s.beta + (relBeta - s.beta) * SMOOTHING;
-      s.gamma = s.gamma + (relGamma - s.gamma) * SMOOTHING;
+      s.beta += (targetBeta - s.beta) * SMOOTHING;
+      s.gamma += (targetGamma - s.gamma) * SMOOTHING;
 
       setSensorValues({
         beta: parseFloat(s.beta.toFixed(2)),
@@ -114,7 +153,7 @@ export default function MotionPreviewPage() {
       if (rafRef.current != null) window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [permissionState, calibrationComplete]);
+  }, [permissionState]);
 
   // iOS permission request
   const requestPermission = useCallback(async () => {
@@ -189,25 +228,48 @@ export default function MotionPreviewPage() {
         Live Motion Detection Preview
       </h1>
 
-      {/* PhoneTiltPreview — flexGrow centers it vertically */}
+      {/* Motion status — only when permission granted */}
+      {granted && (
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            fontSize: 12,
+            color: "rgba(34,211,238,0.9)",
+            display: "flex",
+            alignItems: "center",
+            gap: 6
+          }}
+        >
+          <span aria-hidden>🟢</span>
+          <span>Motion Active</span>
+        </div>
+      )}
+
+      {/* PhoneTiltPreview — flexGrow centers it vertically; double-tap area for recalibration */}
       <div
         style={{
           position: "relative",
           zIndex: 1,
           flexGrow: 1,
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           minHeight: 0
         }}
       >
         <div
+          role="region"
+          aria-label="Motion preview"
           style={{
             position: "relative",
             width: "min(80vw, 360px)",
             aspectRatio: "1 / 1.9",
-            flexShrink: 0
+            flexShrink: 0,
+            touchAction: "manipulation"
           }}
+          onPointerDown={handlePreviewPointerDown}
         >
         {permissionState === "needs_gesture" ? (
           // iOS gate: show tap-to-enable prompt over the phone shell
@@ -266,7 +328,44 @@ export default function MotionPreviewPage() {
           />
         )}
         </div>
+        {/* Live tilt debug — X-axis rotation (rotateX) */}
+        {granted && (
+          <p
+            style={{
+              margin: "8px 0 0",
+              fontSize: 11,
+              color: "rgba(148,163,184,0.5)",
+              fontVariantNumeric: "tabular-nums"
+            }}
+          >
+            Tilt: {Math.round(-sensorValues.beta)}°
+          </p>
+        )}
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            bottom: "calc(24px + env(safe-area-inset-bottom, 0px))",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 10,
+            padding: "8px 14px",
+            borderRadius: 8,
+            background: "rgba(15,23,42,0.92)",
+            border: "1px solid rgba(34,211,238,0.25)",
+            color: "rgba(226,232,240,0.95)",
+            fontSize: 12,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.3)"
+          }}
+        >
+          {toast}
+        </div>
+      )}
 
       {/* Subtitle */}
       <p
