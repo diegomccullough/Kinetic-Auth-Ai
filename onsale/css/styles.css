@@ -6,28 +6,35 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  /* Dark section */
-  --bg-dark: #0d0e12;
-  --bg-dark-elevated: #16181f;
-  --text-dark: #e8eaef;
-  --text-dark-muted: #8b8f9a;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-glow: rgba(99, 102, 241, 0.25);
-  --border-dark: #2a2d36;
+  /* Primary blue (links, badge, progress) — trust, clarity */
+  --primary: #026cdf;
+  --primary-hover: #0284e7;
+  --primary-glow: rgba(2, 108, 223, 0.2);
 
-  /* Light section */
-  --bg-light: #f4f5f7;
+  /* CTA red (Buy Tickets, Continue) — high visibility, action */
+  --accent: #e31937;
+  --accent-hover: #c41430;
+  --accent-glow: rgba(227, 25, 55, 0.25);
+
+  /* Dark section — navy for a friendlier dark */
+  --bg-dark: #0c2340;
+  --bg-dark-elevated: #132f52;
+  --text-dark: #f1f5f9;
+  --text-dark-muted: #94a3b8;
+  --border-dark: #1e3a5f;
+
+  /* Light section — clean white and soft gray */
+  --bg-light: #f1f5f9;
   --bg-light-elevated: #ffffff;
-  --text-light: #1a1c22;
-  --text-light-muted: #5c5f6b;
-  --border-light: #e2e4ea;
+  --text-light: #0f172a;
+  --text-light-muted: #64748b;
+  --border-light: #e2e8f0;
 
   /* Surge / status */
-  --surge-low: #22c55e;
-  --surge-medium: #eab308;
-  --surge-high: #ef4444;
-  --progress-fill: #6366f1;
+  --surge-low: #16a34a;
+  --surge-medium: #ca8a04;
+  --surge-high: #dc2626;
+  --progress-fill: var(--primary);
   --progress-bg: rgba(255, 255, 255, 0.08);
 
   /* Spacing & rhythm */
@@ -82,12 +89,12 @@ p:last-child {
 }
 
 a {
-  color: var(--accent);
+  color: var(--primary);
   text-decoration: none;
 }
 
 a:hover {
-  color: var(--accent-hover);
+  color: var(--primary-hover);
 }
 
 button {
