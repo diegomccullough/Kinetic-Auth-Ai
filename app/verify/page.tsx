@@ -32,7 +32,7 @@ function VerifyPageClient() {
         router.push(verifiedUrl);
       }}
       onCancel={() => {
-        router.back();
+        router.push("/");
       }}
     />
   );

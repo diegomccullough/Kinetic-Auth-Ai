@@ -1217,7 +1217,7 @@ export type VerificationWizardProps = {
 
 export default function VerificationWizard({
   onVerified,
-  onCancel: _onCancel,
+  onCancel,
   songs,
 }: VerificationWizardProps) {
   const reduceMotion = useReducedMotion();
@@ -1552,6 +1552,26 @@ export default function VerificationWizard({
                   Enable Motion Sensor
                 </motion.button>
               )}
+
+              {/* Skip verification button */}
+              <button
+                type="button"
+                onClick={onCancel}
+                style={{
+                  width: "100%",
+                  height: 44,
+                  borderRadius: 14,
+                  background: "transparent",
+                  color: "rgba(148,163,184,0.9)",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  border: "1px solid rgba(71,85,105,0.5)",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                Skip Verification
+              </button>
 
               {/* Privacy note */}
               <p
