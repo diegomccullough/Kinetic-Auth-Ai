@@ -192,16 +192,16 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
 
   const cueLine = useMemo(() => {
     if (screen !== "tasks") return "";
-    if (taskId === "left") return "Good — now tilt left…";
-    if (taskId === "right") return "Good — now tilt right…";
-    return "Nice — hold steady…";
+    if (taskId === "left") return "Tilt left until the ring fills…";
+    if (taskId === "right") return "Now tilt right…";
+    return "Hold steady in the center…";
   }, [screen, taskId]);
 
   const stepTitle = useMemo(() => {
     if (screen !== "tasks") return "";
     if (taskId === "left") return "Step 1 — Tilt Left";
     if (taskId === "right") return "Step 2 — Tilt Right";
-    return "Step 3 — Stabilize";
+    return "Step 3 — Hold Steady";
   }, [screen, taskId]);
 
   const advanceToTasks = useCallback(() => {
@@ -375,7 +375,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
 
   return (
     <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
-      {/* Subtle top-edge ambient — not a vignette, just a hint */}
+      {/* Subtle top-edge ambient */}
       <div
         className="pointer-events-none fixed inset-x-0 top-0 h-[260px]"
         style={{ background: "radial-gradient(ellipse 70% 100% at 50% -20%, rgba(30,64,175,0.18) 0%, transparent 100%)" }}
@@ -402,9 +402,8 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
               </div>
 
-              {/* Tilt indicator — replaces 3D phone */}
+              {/* Tilt indicator */}
               <div className="mx-auto mt-12 w-full flex-1 flex flex-col items-center justify-center gap-8">
-                {/* Device tilt visual — simple, clean */}
                 <motion.div
                   className="relative flex h-48 w-48 items-center justify-center"
                   style={{ rotate: clamp(smoothedGamma, -22, 22) * 0.55 }}
@@ -413,7 +412,6 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                   <div className="relative h-40 w-24 rounded-[18px] border border-slate-600 bg-slate-800 shadow-lg">
                     <div className="absolute top-3 left-1/2 -translate-x-1/2 h-1.5 w-8 rounded-full bg-slate-700" />
                     <div className="absolute bottom-3 left-1/2 -translate-x-1/2 h-1 w-5 rounded-full bg-slate-700" />
-                    {/* Screen glow */}
                     <div className="absolute inset-2 rounded-[12px] bg-slate-900 flex items-center justify-center">
                       <div className="h-6 w-6 rounded-full border-2 border-blue-500/60 flex items-center justify-center">
                         <div className="h-2 w-2 rounded-full bg-blue-400" />
@@ -534,7 +532,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 </AnimatePresence>
               </div>
 
-              {/* Interaction area — flat card */}
+              {/* Interaction area */}
               <div
                 className={[
                   "relative mt-6 w-full overflow-hidden rounded-2xl border",
@@ -555,7 +553,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                         exit={reduceMotion ? undefined : { opacity: 0 }}
                         transition={reduceMotion ? undefined : { duration: 0.2 }}
                       >
-                        {/* Arrow indicator */}
+                        {/* Arrow + ring */}
                         <div className="relative grid place-items-center">
                           <div className="relative h-[180px] w-[180px]">
                             <HoldRing pct01={holdPct} radius={70} strokeWidth={8} color="rgba(96,165,250,0.9)" />
@@ -651,7 +649,7 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                 </div>
               </div>
 
-              {/* Step tracker dots */}
+              {/* Step tracker */}
               <div className="mt-6">
                 <Stepper completed={completedCount} />
               </div>
@@ -706,9 +704,9 @@ export default function VerificationWizard({ onVerified, onCancel: _onCancel }: 
                   </div>
                   <div className="divide-y divide-slate-700/40">
                     {[
-                      { label: "Motion signature", value: "Valid", ok: true },
-                      { label: "Behavioral timing", value: "Natural", ok: true },
-                      { label: "Device integrity", value: "Verified", ok: true },
+                      { label: "Motion signature", value: "Valid" },
+                      { label: "Behavioral timing", value: "Natural" },
+                      { label: "Device integrity", value: "Verified" },
                     ].map((row, i) => (
                       <motion.div
                         key={row.label}

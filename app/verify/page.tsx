@@ -26,7 +26,7 @@ function VerifyPageClient() {
 
 export default function VerifyPage() {
   return (
-    <Suspense fallback={<main className="min-h-dvh bg-black" />}>
+    <Suspense fallback={<main className="min-h-dvh bg-[#0f172a]" />}>
       <VerifyPageClient />
     </Suspense>
   );
