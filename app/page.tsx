@@ -3,6 +3,8 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import AnimatedNumber from "@/components/AnimatedNumber";
+import { DEMO_MODE } from "@/lib/demoMode";
 
 function HomePageClient() {
   const reduceMotion = useReducedMotion();
@@ -16,6 +18,8 @@ function HomePageClient() {
   const [ticketsLeft, setTicketsLeft] = useState(43);
   const [pulse, setPulse] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(134); // 02:14
+  const [unlockFx, setUnlockFx] = useState(false);
+  const unlockSeenRef = useRef(false);
 
   const timersRef = useRef<number[]>([]);
 
@@ -64,11 +68,25 @@ function HomePageClient() {
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (!verified) {
+      unlockSeenRef.current = false;
+      setUnlockFx(false);
+      return;
+    }
+    if (unlockSeenRef.current) return;
+    unlockSeenRef.current = true;
+    setUnlockFx(true);
+    const id = window.setTimeout(() => setUnlockFx(false), 1600);
+    return () => window.clearTimeout(id);
+  }, [verified]);
+
   const queueLabel = useMemo(() => `${queue.toLocaleString()} fans`, [queue]);
   const viewingLabel = useMemo(() => `${viewing.toLocaleString()} viewing`, [viewing]);
 
   const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
   const ss = String(secondsLeft % 60).padStart(2, "0");
+  const urgent = secondsLeft <= 30;
 
   return (
     <main className="h-dvh overflow-hidden bg-[radial-gradient(120%_120%_at_50%_0%,rgba(56,189,248,0.18)_0%,rgba(99,102,241,0.14)_32%,rgba(0,0,0,1)_76%)] px-4 py-5 text-white">
@@ -92,68 +110,131 @@ function HomePageClient() {
                 <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">FANS IN QUEUE</p>
                 <div className="mt-1 flex items-center gap-2">
                   <motion.div
-                    className="h-2 w-2 rounded-full bg-sky-200"
+                    className={[
+                      "rounded-full bg-sky-200",
+                      DEMO_MODE ? "h-3 w-3" : "h-2 w-2"
+                    ].join(" ")}
                     animate={reduceMotion ? undefined : { opacity: [0.35, 1, 0.35], scale: [1, 1.2, 1] }}
                     transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-                    style={{ boxShadow: "0 0 18px rgba(56,189,248,0.70)" }}
+                    style={{ boxShadow: DEMO_MODE ? "0 0 34px rgba(56,189,248,0.90)" : "0 0 18px rgba(56,189,248,0.70)" }}
                     aria-hidden="true"
                   />
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    <motion.span
-                      key={queue}
+                  {DEMO_MODE ? (
+                    <AnimatedNumber
+                      value={queue}
                       className="text-lg font-semibold tabular-nums"
-                      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                      exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-                      transition={{ duration: 0.18, ease: "easeOut" }}
-                    >
-                      {queueLabel}
-                    </motion.span>
-                  </AnimatePresence>
+                      duration={0.8}
+                      format={(n) => `${Math.round(n).toLocaleString()} fans`}
+                    />
+                  ) : (
+                    <AnimatePresence mode="popLayout" initial={false}>
+                      <motion.span
+                        key={queue}
+                        className="text-lg font-semibold tabular-nums"
+                        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                        exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                      >
+                        {queueLabel}
+                      </motion.span>
+                    </AnimatePresence>
+                  )}
                 </div>
               </div>
 
               <div className="rounded-2xl bg-black/30 px-4 py-3 ring-1 ring-white/10">
                 <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">ACTIVITY</p>
                 <div className="mt-1 flex items-baseline justify-between">
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    <motion.span
-                      key={viewing}
+                  {DEMO_MODE ? (
+                    <AnimatedNumber
+                      value={viewing}
                       className="text-lg font-semibold tabular-nums"
-                      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                      exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-                      transition={{ duration: 0.18, ease: "easeOut" }}
-                    >
-                      {viewingLabel}
-                    </motion.span>
-                  </AnimatePresence>
+                      duration={0.7}
+                      format={(n) => `${Math.round(n).toLocaleString()} viewing`}
+                    />
+                  ) : (
+                    <AnimatePresence mode="popLayout" initial={false}>
+                      <motion.span
+                        key={viewing}
+                        className="text-lg font-semibold tabular-nums"
+                        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                        exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                      >
+                        {viewingLabel}
+                      </motion.span>
+                    </AnimatePresence>
+                  )}
                   <span className="text-xs text-white/55">this section</span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-between rounded-2xl bg-rose-500/10 px-4 py-3 ring-1 ring-rose-400/15">
+            <div className="mt-3 flex items-center justify-between rounded-2xl bg-rose-500/15 px-4 py-3 ring-1 ring-rose-300/20">
               <div>
                 <p className="text-[10px] font-semibold tracking-[0.22em] text-rose-200/90">URGENCY</p>
-                <p className="mt-1 text-sm font-semibold text-rose-100">Cart expires in {mm}:{ss}</p>
+                <p className="mt-1 text-sm font-semibold text-rose-100">
+                  Cart expires in{" "}
+                  {DEMO_MODE && !reduceMotion ? (
+                    <motion.span className="inline-flex items-baseline gap-0.5 tabular-nums">
+                      <motion.span
+                        className="bg-gradient-to-r from-rose-200 via-white to-rose-200 bg-clip-text text-transparent"
+                        style={{ backgroundSize: "220% 100%" }}
+                        animate={{ backgroundPosition: ["0% 0%", "220% 0%"] }}
+                        transition={{ duration: 1.35, repeat: Infinity, ease: "linear" }}
+                      >
+                        {urgent && !reduceMotion ? (
+                          <motion.span
+                            className="inline-block"
+                            animate={{ scale: [1, 1.035, 1], opacity: [0.92, 1, 0.92] }}
+                            transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
+                          >
+                            {mm}:{ss}
+                          </motion.span>
+                        ) : (
+                          `${mm}:${ss}`
+                        )}
+                      </motion.span>
+                      {urgent && !reduceMotion ? (
+                        <motion.span
+                          className="ml-1 text-rose-100/80"
+                          animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.04, 1] }}
+                          transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
+                          aria-hidden="true"
+                        >
+                          •
+                        </motion.span>
+                      ) : null}
+                    </motion.span>
+                  ) : (
+                    <span className="tabular-nums">
+                      {mm}:{ss}
+                    </span>
+                  )}
+                </p>
               </div>
               <div className="text-right">
                 <p className="text-[10px] font-semibold tracking-[0.22em] text-white/60">SCARCITY</p>
                 <p className="mt-1 text-sm font-semibold text-white">
                   Only{" "}
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    <motion.span
-                      key={ticketsLeft}
-                      className="tabular-nums"
-                      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-                      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                      exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-                      transition={{ duration: 0.18, ease: "easeOut" }}
-                    >
-                      {ticketsLeft}
-                    </motion.span>
-                  </AnimatePresence>{" "}
+                  {DEMO_MODE ? (
+                    <AnimatedNumber value={ticketsLeft} className="tabular-nums" duration={0.5} />
+                  ) : (
+                    <AnimatePresence mode="popLayout" initial={false}>
+                      <motion.span
+                        key={ticketsLeft}
+                        className="tabular-nums"
+                        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                        exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                      >
+                        {ticketsLeft}
+                      </motion.span>
+                    </AnimatePresence>
+                  )}{" "}
                   left
                 </p>
               </div>
@@ -180,14 +261,57 @@ function HomePageClient() {
           initial={reduceMotion ? false : { opacity: 0, y: 10 }}
           animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
           transition={{ delay: 0.05, duration: 0.45, ease: "easeOut" }}
-          className="min-h-0 flex-1 overflow-hidden rounded-[28px] bg-white/[0.04] p-4 ring-1 ring-white/10 backdrop-blur"
+          className="relative min-h-0 flex-1 overflow-hidden rounded-[28px] bg-white/[0.04] p-4 ring-1 ring-white/10 backdrop-blur"
         >
+          <AnimatePresence>
+            {verified && unlockFx && !reduceMotion ? (
+              <motion.div
+                key="unlock-glow"
+                className="pointer-events-none absolute -inset-20 opacity-80"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+                aria-hidden="true"
+              >
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(16,185,129,0.22)_0%,rgba(56,189,248,0.14)_35%,rgba(0,0,0,0)_70%)]" />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {verified ? (
+              <motion.div
+                key="verified-stamp"
+                className="pointer-events-none absolute right-4 top-4 z-10 rotate-[-10deg]"
+                initial={reduceMotion ? false : { opacity: 0, scale: 0.9, y: -6 }}
+                animate={
+                  reduceMotion
+                    ? undefined
+                    : unlockFx
+                      ? { opacity: 1, scale: 1, y: 0 }
+                      : { opacity: 0.9, scale: 0.96, y: 0 }
+                }
+                exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96 }}
+                transition={{ type: "spring", stiffness: 220, damping: 18, mass: 0.55 }}
+              >
+                <div className="rounded-2xl bg-emerald-400/10 px-4 py-2 ring-1 ring-emerald-300/25 backdrop-blur">
+                  <p className="text-[10px] font-semibold tracking-[0.26em] text-emerald-200/90">VERIFIED HUMAN</p>
+                  <p className="mt-0.5 text-[11px] font-medium text-emerald-100/90">Checkout unlocked</p>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
           <div className="flex h-full flex-col gap-4 overflow-hidden">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold tracking-[0.22em] text-white/60">SEAT</p>
                 <p className="mt-2 text-xl font-semibold tracking-tight">Section B • Row 3</p>
-                <p className="mt-1 text-sm text-white/65">1 ticket per customer • limited release</p>
+                <p className="mt-1 text-sm text-white/65">
+                  1 ticket per customer • limited release
+                  {verified ? <span className="ml-2 text-emerald-200/90">• Checkout unlocked</span> : null}
+                </p>
               </div>
               <div className="text-right">
                 <p className="text-xs font-semibold tracking-[0.22em] text-white/60">PRICE</p>
@@ -198,7 +322,20 @@ function HomePageClient() {
 
             <div className="rounded-2xl bg-amber-400/10 px-4 py-3 ring-1 ring-amber-300/20">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-amber-100">High demand — quick verification required</p>
+                <p className="text-sm font-semibold text-amber-100">
+                  {DEMO_MODE && !reduceMotion ? (
+                    <motion.span
+                      className="bg-gradient-to-r from-amber-200 via-white to-amber-200 bg-clip-text text-transparent"
+                      style={{ backgroundSize: "220% 100%" }}
+                      animate={{ backgroundPosition: ["0% 0%", "220% 0%"] }}
+                      transition={{ duration: 1.8, repeat: Infinity, ease: "linear" }}
+                    >
+                      High demand — quick verification required
+                    </motion.span>
+                  ) : (
+                    "High demand — quick verification required"
+                  )}
+                </p>
                 <span className="rounded-full bg-amber-300/20 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] text-amber-100">
                   RISK
                 </span>
@@ -216,7 +353,7 @@ function HomePageClient() {
                   setPlaced(true);
                 }}
                 className={[
-                  "inline-flex h-14 w-full items-center justify-center rounded-2xl px-4 text-sm font-semibold ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black",
+                  "relative inline-flex h-14 w-full items-center justify-center overflow-hidden rounded-2xl px-4 text-sm font-semibold ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black",
                   verified ? "bg-white text-black ring-white/10" : "bg-white/10 text-white ring-white/15 hover:bg-white/15"
                 ].join(" ")}
                 animate={
@@ -226,6 +363,23 @@ function HomePageClient() {
                 }
                 transition={reduceMotion ? undefined : { duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
               >
+                <AnimatePresence>
+                  {verified && unlockFx && !reduceMotion ? (
+                    <motion.div
+                      key="buy-shimmer"
+                      className="pointer-events-none absolute inset-0 opacity-70"
+                      initial={{ x: "-120%" }}
+                      animate={{ x: "120%" }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 1.05, ease: "easeOut" }}
+                      style={{
+                        background:
+                          "linear-gradient(115deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.35) 18%, rgba(255,255,255,0) 36%)"
+                      }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </AnimatePresence>
                 {verified ? "BUY TICKET" : "BUY TICKET (VERIFY FIRST)"}
               </motion.button>
 

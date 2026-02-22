@@ -16,7 +16,7 @@ export default function VerifyPage() {
           <div className="relative h-full overflow-hidden px-5 py-5">
             <VerificationWizard
               onVerified={() => {
-                router.push("/");
+                router.push("/?verified=true");
               }}
               onCancel={() => {
                 router.push("/");

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DEMO_MODE } from "@/lib/demoMode";
 
 type Step = "intro" | "kinetic" | "success";
 type MotionPermissionState = "unknown" | "needs_gesture" | "granted" | "denied" | "unsupported";
@@ -20,6 +21,16 @@ function clamp(n: number, min: number, max: number) {
 function mapTiltToPx(deg: number) {
   const unit = clamp(deg / CLAMP_TILT_DEG, -1, 1);
   return unit * MAX_OFFSET_PX;
+}
+
+function vibrate(pattern: number | number[]) {
+  try {
+    if (typeof navigator === "undefined") return;
+    if (typeof navigator.vibrate !== "function") return;
+    navigator.vibrate(pattern);
+  } catch {
+    // ignore
+  }
 }
 
 async function requestOrientationPermission(): Promise<MotionPermissionState> {
@@ -68,6 +79,7 @@ function StepPill({ n, label, active }: { n: string; label: string; active: bool
 }
 
 export default function KineticWizard() {
+  const demo = DEMO_MODE;
   const [step, setStep] = useState<Step>("intro");
   const [permission, setPermission] = useState<MotionPermissionState>("unknown");
 
@@ -145,6 +157,7 @@ export default function KineticWizard() {
 
       if (pct >= 100 && !doneRef.current) {
         doneRef.current = true;
+        if (demo) vibrate([12, 18, 12]);
         window.setTimeout(() => setStep("success"), 650);
       }
     };
@@ -159,9 +172,16 @@ export default function KineticWizard() {
   }, [kineticReady, step]);
 
   const chrome = useMemo(() => {
-    const a = inside ? 0.22 : 0.12;
+    const a = inside ? (demo ? 0.34 : 0.22) : demo ? 0.18 : 0.12;
     return `0 0 52px rgba(56,189,248,${a}), 0 0 96px rgba(99,102,241,${a * 0.7})`;
-  }, [inside]);
+  }, [demo, inside]);
+
+  const bgShift = useMemo(() => {
+    if (!demo) return { x: 0, y: 0 };
+    const x = clamp(tilt.gamma, -18, 18) * 0.7;
+    const y = clamp(tilt.beta, -18, 18) * 0.55;
+    return { x, y };
+  }, [demo, tilt.beta, tilt.gamma]);
 
   return (
     <main className="min-h-dvh px-4 pb-10 pt-8">
@@ -169,12 +189,33 @@ export default function KineticWizard() {
         <div className="relative overflow-hidden rounded-[30px] ring-1 ring-white/10">
           <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,rgba(56,189,248,0.22)_0%,rgba(99,102,241,0.14)_32%,rgba(0,0,0,1)_76%)]" />
           <div className="absolute inset-0 bg-[radial-gradient(80%_70%_at_50%_25%,rgba(255,255,255,0.10)_0%,rgba(0,0,0,0)_62%)]" />
+          {demo ? (
+            <motion.div className="absolute -inset-16 opacity-70" style={{ x: bgShift.x, y: bgShift.y }} aria-hidden="true">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.24)_0%,rgba(99,102,241,0.16)_30%,rgba(0,0,0,0)_72%)]" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(16,185,129,0.12)_0%,rgba(0,0,0,0)_58%)]" />
+            </motion.div>
+          ) : null}
+          {demo ? (
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(120% 100% at 50% 35%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.48) 72%, rgba(0,0,0,0.82) 100%)"
+              }}
+              aria-hidden="true"
+            />
+          ) : null}
 
           <div className="relative px-5 pb-6 pt-6">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold tracking-[0.26em] text-white/60">SECURE CHECKOUT</p>
-                <h1 className="mt-2 text-balance text-[28px] font-semibold leading-[1.05] tracking-tight">
+                <h1
+                  className={[
+                    "mt-2 text-balance font-semibold leading-[1.05] tracking-tight",
+                    demo ? "text-[36px]" : "text-[28px]"
+                  ].join(" ")}
+                >
                   Step-up verification
                 </h1>
                 <p className="mt-2 text-sm text-white/65">A quick kinetic signature to unlock purchase.</p>
@@ -276,14 +317,14 @@ export default function KineticWizard() {
                   >
                     <div className="text-center">
                       <p className="text-xs font-semibold tracking-[0.22em] text-white/60">KINETIC SIGNATURE</p>
-                      <p className="mt-2 text-lg font-semibold tracking-tight">
+                      <p className={["mt-2 font-semibold tracking-tight", demo ? "text-2xl" : "text-lg"].join(" ")}>
                         {progress >= 100 ? "Locked in." : inside ? "Hold steady…" : "Center the dot"}
                       </p>
                       <p className="mt-1 text-sm text-white/65">Keep your phone still for a moment.</p>
                     </div>
 
                     <div className="flex items-center justify-center">
-                      <div className="relative h-[290px] w-[290px]">
+                      <div className={["relative", demo ? "h-[350px] w-[350px]" : "h-[290px] w-[290px]"].join(" ")}>
                         <motion.div
                           className="absolute inset-0 rounded-full"
                           animate={{ boxShadow: chrome, scale: inside ? 1.01 : 1, opacity: 0.98 }}
@@ -297,13 +338,20 @@ export default function KineticWizard() {
                           aria-hidden="true"
                           focusable="false"
                         >
-                          <circle cx="150" cy="150" r="122" stroke="rgba(255,255,255,0.10)" strokeWidth="10" fill="none" />
+                          <circle
+                            cx="150"
+                            cy="150"
+                            r="122"
+                            stroke="rgba(255,255,255,0.10)"
+                            strokeWidth={demo ? 14 : 10}
+                            fill="none"
+                          />
                           <motion.circle
                             cx="150"
                             cy="150"
                             r="122"
                             stroke="rgba(56,189,248,0.95)"
-                            strokeWidth="10"
+                            strokeWidth={demo ? 14 : 10}
                             strokeLinecap="round"
                             fill="none"
                             strokeDasharray={2 * Math.PI * 122}
@@ -313,8 +361,13 @@ export default function KineticWizard() {
                         </svg>
 
                         <div className="absolute inset-0 grid place-items-center">
-                          <div className="relative h-[242px] w-[242px] rounded-full">
-                            <div className="absolute left-1/2 top-1/2 h-[88px] w-[88px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/10" />
+                          <div className={["relative rounded-full", demo ? "h-[292px] w-[292px]" : "h-[242px] w-[242px]"].join(" ")}>
+                            <div
+                              className={[
+                                "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white/10",
+                                demo ? "h-[106px] w-[106px]" : "h-[88px] w-[88px]"
+                              ].join(" ")}
+                            />
                             <motion.div
                               className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-200 shadow-[0_0_22px_rgba(56,189,248,0.65)]"
                               animate={{ x: dot.x, y: dot.y, scale: progress >= 100 ? 1.25 : 1 }}
@@ -376,8 +429,12 @@ export default function KineticWizard() {
                     className="space-y-5"
                   >
                     <div className="text-center">
-                      <p className="text-xs font-semibold tracking-[0.22em] text-white/60">VERIFIED</p>
-                      <p className="mt-2 text-2xl font-semibold tracking-tight">Checkout unlocked</p>
+                      <p className={["font-semibold tracking-[0.22em] text-white/60", demo ? "text-sm" : "text-xs"].join(" ")}>
+                        VERIFIED
+                      </p>
+                      <p className={["mt-2 font-semibold tracking-tight", demo ? "text-5xl" : "text-2xl"].join(" ")}>
+                        Checkout unlocked
+                      </p>
                       <p className="mt-1 text-sm text-white/65">For the demo, choose the next step.</p>
                     </div>
 
