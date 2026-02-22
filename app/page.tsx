@@ -3,74 +3,6 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-<<<<<<< HEAD
-const ALL_CATEGORIES: (EventCategory | "all")[] = ["all", "music", "sports", "comedy", "family"];
-const CATEGORY_MAP: Record<EventCategory | "all", string> = {
-  all: "All events",
-  ...CATEGORY_LABELS,
-};
-
-function EventsListingClient() {
-  const reduceMotion = useReducedMotion();
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<EventCategory | "all">("all");
-
-  const filtered = useMemo(() => {
-    let list = getEventsByCategory(category);
-    if (!search.trim()) return list;
-    const q = search.trim().toLowerCase();
-    return list.filter(
-      (e) =>
-        e.name.toLowerCase().includes(q) ||
-        e.subtitle?.toLowerCase().includes(q) ||
-        e.venue.toLowerCase().includes(q)
-    );
-  }, [search, category]);
-
-  return (
-    <main className="min-h-dvh bg-surface px-4 py-4 sm:py-6 md:py-8">
-      <div className="mx-auto max-w-6xl">
-        <motion.header
-          initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-          animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="mb-6 sm:mb-8"
-        >
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--color-text)] sm:text-3xl">
-            Events
-          </h1>
-          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-            Find tickets for concerts, sports, comedy, and more.
-          </p>
-
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-            <label className="flex-1">
-              <span className="sr-only">Search events</span>
-              <input
-                type="search"
-                placeholder="Search by artist, venue, or event..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-surface-elevated px-4 py-3 text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 sm:max-w-sm"
-              />
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {ALL_CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setCategory(cat)}
-                  className={[
-                    "rounded-lg px-3 py-2 text-sm font-medium transition",
-                    category === cat
-                      ? "bg-primary text-white"
-                      : "bg-surface-elevated text-[var(--color-text-muted)] ring-1 ring-slate-200 hover:bg-slate-100 hover:text-[var(--color-text)]",
-                  ].join(" ")}
-                >
-                  {CATEGORY_MAP[cat]}
-                </button>
-              ))}
-=======
 // ─── Live queue numbers ───────────────────────────────────────────────────────
 function useQueue() {
   const [queue, setQueue] = useState(12483);
@@ -121,14 +53,14 @@ function HomePageClient() {
   const ss = String(secondsLeft % 60).padStart(2, "0");
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[#f4f5f7]">
+    <div className="flex min-h-dvh flex-col bg-[#f0f4fb]">
 
       {/* ── Sticky top header ──────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-20 border-b border-gray-200 bg-white">
+      <header className="sticky top-0 z-20 border-b border-blue-100 bg-white shadow-sm">
         <div className="mx-auto max-w-lg px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-500">
                 Onslaught Tour
               </p>
               <h1 className="mt-0.5 text-lg font-bold leading-snug text-gray-900">
@@ -137,7 +69,6 @@ function HomePageClient() {
               <p className="mt-0.5 text-sm text-gray-500">
                 Fri Oct 17 · Neon City Arena · 8:30 PM
               </p>
->>>>>>> c262930661f37671db8467cb71be9d0c467d4414
             </div>
             <span className="mt-1 shrink-0 rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
               High Demand
@@ -146,41 +77,15 @@ function HomePageClient() {
         </div>
       </header>
 
-<<<<<<< HEAD
-        {filtered.length === 0 ? (
-          <motion.p
-            initial={reduceMotion ? false : { opacity: 0 }}
-            animate={reduceMotion ? undefined : { opacity: 1 }}
-            className="rounded-xl bg-surface-elevated p-8 text-center text-[var(--color-text-muted)] ring-1 ring-slate-200"
-          >
-            No events match your search. Try a different term or category.
-          </motion.p>
-        ) : (
-          <motion.ul
-            initial={reduceMotion ? false : { opacity: 0 }}
-            animate={reduceMotion ? undefined : { opacity: 1 }}
-            transition={{ delay: 0.05 }}
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3"
-          >
-            {filtered.map((event, i) => (
-              <motion.li
-                key={event.slug}
-                initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-                animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, delay: i * 0.04 }}
-              >
-                <EventCard event={event} />
-              </motion.li>
-            ))}
-          </motion.ul>
-        )}
-=======
       {/* ── Scrollable content ─────────────────────────────────────────────── */}
       <main className="mx-auto w-full max-w-lg flex-1 px-5 pb-36 pt-6">
 
         {/* Queue Status */}
         <section aria-label="Queue status">
-          <div className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-blue-500">
+            Live Queue
+          </p>
+          <div className="divide-y divide-blue-50 rounded-xl border border-blue-100 bg-white shadow-sm">
 
             <div className="flex items-center justify-between px-4 py-3.5">
               <div>
@@ -189,7 +94,10 @@ function HomePageClient() {
                 </p>
                 <p className="mt-0.5 text-xs text-gray-500">Estimated entry: 3–5 minutes</p>
               </div>
-              <div className="h-2 w-2 animate-pulse rounded-full bg-green-500" aria-hidden="true" />
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" aria-hidden="true" />
+                <span className="text-xs font-medium text-blue-600">Live</span>
+              </div>
             </div>
 
             <div className="px-4 py-3.5">
@@ -202,7 +110,7 @@ function HomePageClient() {
             <div className="flex items-center justify-between px-4 py-3.5">
               <p className="text-sm text-gray-600">
                 Cart reserved for{" "}
-                <span className={["font-semibold tabular-nums", secondsLeft <= 30 ? "text-red-600" : "text-gray-900"].join(" ")}>
+                <span className={["font-semibold tabular-nums", secondsLeft <= 30 ? "text-red-600" : "text-blue-700"].join(" ")}>
                   {mm}:{ss}
                 </span>
               </p>
@@ -213,10 +121,13 @@ function HomePageClient() {
         </section>
 
         {/* Divider */}
-        <div className="my-6 border-t border-gray-200" />
+        <div className="my-6 border-t border-blue-100" />
 
         {/* Ticket Selection */}
         <section aria-label="Ticket details">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-blue-500">
+            Your Ticket
+          </p>
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-gray-900">Section B – Row 3</h2>
@@ -230,15 +141,15 @@ function HomePageClient() {
 
           <ul className="mt-5 space-y-2.5 text-sm text-gray-600">
             <li className="flex items-center gap-2.5">
-              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400" aria-hidden="true" />
+              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" aria-hidden="true" />
               1 ticket per customer · non-transferable for 24 hours
             </li>
             <li className="flex items-center gap-2.5">
-              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400" aria-hidden="true" />
+              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" aria-hidden="true" />
               Identity-verified purchase required
             </li>
             <li className="flex items-center gap-2.5">
-              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400" aria-hidden="true" />
+              <span className="mt-px h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" aria-hidden="true" />
               Tickets delivered via mobile app on entry day
             </li>
           </ul>
@@ -252,19 +163,22 @@ function HomePageClient() {
         </section>
 
         {/* Divider */}
-        <div className="my-6 border-t border-gray-200" />
+        <div className="my-6 border-t border-blue-100" />
 
         {/* Verification status */}
         <section aria-label="Verification status">
-          <div className="rounded-lg border border-gray-200 bg-white">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-blue-500">
+            Security Check
+          </p>
+          <div className={["rounded-xl border bg-white shadow-sm", verified ? "border-blue-200" : "border-gray-200"].join(" ")}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Security Check
+                Status
               </p>
               <span className={[
-                "rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+                "rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
                 verified
-                  ? "bg-green-50 text-green-700"
+                  ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
                   : "bg-gray-100 text-gray-500"
               ].join(" ")}>
                 {verified ? "Passed" : "Pending"}
@@ -273,13 +187,13 @@ function HomePageClient() {
             <div className="divide-y divide-gray-100">
               <div className="flex items-center justify-between px-4 py-3">
                 <p className="text-sm text-gray-600">Behavior analysis</p>
-                <p className={["text-sm font-medium", verified ? "text-green-700" : "text-gray-400"].join(" ")}>
+                <p className={["text-sm font-medium", verified ? "text-blue-700" : "text-gray-400"].join(" ")}>
                   {verified ? "Verified" : "Not run"}
                 </p>
               </div>
               <div className="flex items-center justify-between px-4 py-3">
                 <p className="text-sm text-gray-600">Risk level</p>
-                <p className={["text-sm font-medium", verified ? "text-green-700" : "text-gray-400"].join(" ")}>
+                <p className={["text-sm font-medium", verified ? "text-blue-700" : "text-gray-400"].join(" ")}>
                   {verified ? "Normal" : "—"}
                 </p>
               </div>
@@ -290,10 +204,10 @@ function HomePageClient() {
         {/* Order summary */}
         {verified && (
           <section aria-label="Order summary" className="mt-6">
-            <div className="rounded-lg border border-gray-200 bg-white">
-              <div className="px-4 py-3 border-b border-gray-100">
-                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Order Summary</p>
-              </div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-blue-500">
+              Order Summary
+            </p>
+            <div className="rounded-xl border border-blue-100 bg-white shadow-sm">
               <div className="space-y-0 divide-y divide-gray-100">
                 <div className="flex justify-between px-4 py-3">
                   <p className="text-sm text-gray-600">1× Section B · Row 3</p>
@@ -305,7 +219,7 @@ function HomePageClient() {
                 </div>
                 <div className="flex justify-between px-4 py-3">
                   <p className="text-sm font-semibold text-gray-900">Total</p>
-                  <p className="text-sm font-semibold text-gray-900">$299.00</p>
+                  <p className="text-sm font-semibold text-blue-700">$299.00</p>
                 </div>
               </div>
             </div>
@@ -316,16 +230,16 @@ function HomePageClient() {
 
       {/* ── Sticky bottom CTA bar ──────────────────────────────────────────── */}
       <div
-        className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white px-5 pb-[env(safe-area-inset-bottom,0px)] pt-4"
-        style={{ boxShadow: "0 -1px 0 0 #e5e7eb, 0 -4px 12px 0 rgba(0,0,0,0.04)" }}
+        className="fixed inset-x-0 bottom-0 z-20 border-t border-blue-100 bg-white px-5 pb-[env(safe-area-inset-bottom,0px)] pt-4"
+        style={{ boxShadow: "0 -1px 0 0 #dbeafe, 0 -4px 16px 0 rgba(2,108,223,0.06)" }}
       >
         <div className="mx-auto max-w-lg">
 
           {verified && !placed && (
-            <p className="mb-3 flex items-center gap-2 text-xs text-green-700">
+            <p className="mb-3 flex items-center gap-2 text-xs text-blue-700">
               <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
-                <circle cx="6.5" cy="6.5" r="6.5" fill="#16a34a" opacity=".15" />
-                <path d="M4 6.5l1.8 1.8L9 4.5" stroke="#16a34a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="6.5" cy="6.5" r="6.5" fill="#026cdf" opacity=".15" />
+                <path d="M4 6.5l1.8 1.8L9 4.5" stroke="#026cdf" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               Behavior verified · Risk level: Normal
             </p>
@@ -342,16 +256,16 @@ function HomePageClient() {
             }}
             disabled={placed}
             className={[
-              "w-full rounded-md py-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
+              "w-full rounded-xl py-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2",
               placed
                 ? "bg-green-600 text-white cursor-default"
                 : verified
-                ? "bg-blue-700 text-white hover:bg-blue-800 active:bg-blue-900"
+                ? "bg-[#026cdf] text-white hover:bg-[#0258b8] active:bg-[#014fa6]"
                 : "bg-gray-900 text-white hover:bg-gray-800 active:bg-gray-700"
             ].join(" ")}
           >
             {placed
-              ? "Order Placed"
+              ? "Order Placed ✓"
               : verified
               ? "Place Order — $299"
               : "Secure & Continue"}
@@ -363,7 +277,6 @@ function HomePageClient() {
             </p>
           )}
         </div>
->>>>>>> c262930661f37671db8467cb71be9d0c467d4414
       </div>
 
     </div>
@@ -373,12 +286,12 @@ function HomePageClient() {
 export default function HomePage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-dvh flex-col bg-[#f4f5f7]">
-        <div className="h-[72px] border-b border-gray-200 bg-white" />
+      <div className="flex min-h-dvh flex-col bg-[#f0f4fb]">
+        <div className="h-[72px] border-b border-blue-100 bg-white" />
         <div className="mx-auto w-full max-w-lg flex-1 space-y-4 px-5 pt-6">
-          <div className="h-28 rounded-lg bg-gray-200 animate-pulse" />
-          <div className="h-40 rounded-lg bg-gray-200 animate-pulse" />
-          <div className="h-24 rounded-lg bg-gray-200 animate-pulse" />
+          <div className="h-28 rounded-xl bg-blue-50 animate-pulse" />
+          <div className="h-40 rounded-xl bg-blue-50 animate-pulse" />
+          <div className="h-24 rounded-xl bg-blue-50 animate-pulse" />
         </div>
       </div>
     }>
