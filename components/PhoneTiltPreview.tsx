@@ -8,9 +8,9 @@ function clamp(n: number, min: number, max: number) {
 
 type PhoneTiltVariant = "default" | "cinematic";
 
-const SENSITIVITY = 2.2;
+const SENSITIVITY = 1.8;
 const CLAMP_DEG = 45;
-const SMOOTHING = 0.3;
+const SMOOTHING = 0.2;
 const DEAD_ZONE_DEG = 2;
 
 const VARIANT_TUNING: Record<
@@ -46,21 +46,12 @@ export default function PhoneTiltPreview({
   const bgRef = useRef<HTMLDivElement | null>(null);
   const rimRef = useRef<HTMLDivElement | null>(null);
 
-  // Baseline: capture on first deviceorientation after permission so rotation is relative.
-  const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
-
   const latest = useRef({ beta: 0, gamma: 0 });
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     latest.current = { beta, gamma };
   }, [beta, gamma]);
-
-  useEffect(() => {
-    if (reduceMotion) return;
-    if (baselineRef.current !== null) return;
-    baselineRef.current = { beta, gamma };
-  }, [beta, gamma, reduceMotion]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -79,6 +70,7 @@ export default function PhoneTiltPreview({
     }
 
     let last = 0;
+    // pos starts at 0,0 so the phone visually begins flat
     const pos = { beta: 0, gamma: 0 };
     const vel = { beta: 0, gamma: 0 };
     const velSmoothed = { beta: 0, gamma: 0 };
@@ -91,15 +83,11 @@ export default function PhoneTiltPreview({
       const dt = clamp((last ? t - last : 16) / 1000, 0.008, 0.05);
       last = t;
 
-      const base = baselineRef.current ?? latest.current;
-      const relBeta = latest.current.beta - base.beta;
-      const relGamma = latest.current.gamma - base.gamma;
-      const dzedBeta = deadZone(relBeta);
-      const dzedGamma = deadZone(relGamma);
-      const scaledBeta = clamp(dzedBeta * SENSITIVITY, -CLAMP_DEG, CLAMP_DEG);
-      const scaledGamma = clamp(dzedGamma * SENSITIVITY, -CLAMP_DEG, CLAMP_DEG);
+      // Use incoming beta/gamma directly (page delivers values already starting from 0)
+      const scaledBeta = clamp(deadZone(latest.current.beta) * SENSITIVITY, -CLAMP_DEG, CLAMP_DEG);
+      const scaledGamma = clamp(deadZone(latest.current.gamma) * SENSITIVITY, -CLAMP_DEG, CLAMP_DEG);
 
-      // Lerp toward target (smoothing factor 0.3)
+      // Lerp toward target (smoothing factor 0.2)
       pos.beta += (scaledBeta - pos.beta) * SMOOTHING;
       pos.gamma += (scaledGamma - pos.gamma) * SMOOTHING;
 

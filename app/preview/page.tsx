@@ -23,32 +23,29 @@ export default function MotionPreviewPage() {
 
   const latestOrientation = useRef({ beta: 0, gamma: 0 });
   const smoothRef = useRef({ beta: 0, gamma: 0 });
-  const baselineRef = useRef<{ beta: number; gamma: number } | null>(null);
-  const calibrationTimeoutRef = useRef<
-    number | ReturnType<typeof setTimeout> | null
-  >(null);
   const rafRef = useRef<number | null>(null);
 
   const [sensorValues, setSensorValues] = useState({ beta: 0, gamma: 0 });
-  const [calibrationComplete, setCalibrationComplete] = useState(false);
 
-  const CALIBRATION_DELAY_MS = 500;
-  const SMOOTHING = 0.3;
+  const SENSITIVITY = 1.8;
+  const SMOOTHING = 0.2;
+  const CLAMP_DEG = 45;
+  const DEAD_ZONE_DEG = 2;
 
   // Detect initial permission state on mount
   useEffect(() => {
     setPermissionState(detectInitialPermissionState());
   }, []);
 
-  // Reset calibration when permission is not granted (so re-grant triggers fresh calibration)
+  // Reset smooth state when permission is revoked so the phone resets to flat
   useEffect(() => {
     if (permissionState !== "granted") {
-      baselineRef.current = null;
-      setCalibrationComplete(false);
+      smoothRef.current = { beta: 0, gamma: 0 };
+      setSensorValues({ beta: 0, gamma: 0 });
     }
   }, [permissionState]);
 
-  // Attach deviceorientation listener immediately after permission; only store raw beta/gamma (do NOT capture baseline here)
+  // Attach deviceorientation listener; read raw beta/gamma directly, no baseline subtraction
   useEffect(() => {
     if (permissionState !== "granted") return;
 
@@ -58,50 +55,34 @@ export default function MotionPreviewPage() {
     };
 
     window.addEventListener("deviceorientation", handleOrientation, { passive: true });
-
-    // After 500ms, capture baseline from latestOrientation at that moment; only then enable motion
-    calibrationTimeoutRef.current = window.setTimeout(() => {
-      baselineRef.current = {
-        beta: latestOrientation.current.beta,
-        gamma: latestOrientation.current.gamma
-      };
-      setCalibrationComplete(true);
-    }, CALIBRATION_DELAY_MS);
-
     return () => {
       window.removeEventListener("deviceorientation", handleOrientation);
-      if (calibrationTimeoutRef.current) {
-        window.clearTimeout(calibrationTimeoutRef.current);
-        calibrationTimeoutRef.current = null;
-      }
     };
   }, [permissionState]);
 
-  // Apply motion only after baseline is set: relative to baseline, smoothing 0.3 (dead zone, sensitivity, clamp in PhoneTiltPreview)
+  // Visual stabilization: start at 0,0 and lerp toward raw sensor values scaled/clamped
   useEffect(() => {
     if (permissionState !== "granted") return;
 
+    // Immediately reset smooth state so phone visually starts flat
+    smoothRef.current = { beta: 0, gamma: 0 };
+
     let last = 0;
+
+    const deadZone = (v: number) => (Math.abs(v) < DEAD_ZONE_DEG ? 0 : v);
 
     const tick = (t: number) => {
       rafRef.current = window.requestAnimationFrame(tick);
       if (t - last < 1000 / 60) return;
       last = t;
 
-      const latest = latestOrientation.current;
-      const base = baselineRef.current;
+      const raw = latestOrientation.current;
+      const targetBeta = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(raw.beta) * SENSITIVITY));
+      const targetGamma = Math.min(CLAMP_DEG, Math.max(-CLAMP_DEG, deadZone(raw.gamma) * SENSITIVITY));
 
-      if (!calibrationComplete || base === null) {
-        setSensorValues({ beta: 0, gamma: 0 });
-        smoothRef.current = { beta: 0, gamma: 0 };
-        return;
-      }
-
-      const relBeta = latest.beta - base.beta;
-      const relGamma = latest.gamma - base.gamma;
       const s = smoothRef.current;
-      s.beta = s.beta + (relBeta - s.beta) * SMOOTHING;
-      s.gamma = s.gamma + (relGamma - s.gamma) * SMOOTHING;
+      s.beta += (targetBeta - s.beta) * SMOOTHING;
+      s.gamma += (targetGamma - s.gamma) * SMOOTHING;
 
       setSensorValues({
         beta: parseFloat(s.beta.toFixed(2)),
@@ -114,7 +95,7 @@ export default function MotionPreviewPage() {
       if (rafRef.current != null) window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [permissionState, calibrationComplete]);
+  }, [permissionState]);
 
   // iOS permission request
   const requestPermission = useCallback(async () => {
