@@ -6,6 +6,8 @@ import { scoreHumanConfidence, type MotionSample, type ScoreBreakdown } from "@/
 import { useDeviceOrientation } from "@/lib/useDeviceOrientation";
 import PhoneTiltPreview from "@/components/PhoneTiltPreview";
 import type { EventSong } from "@/lib/events";
+import { evaluateRisk } from "@/lib/riskClient";
+import { narrate } from "@/lib/narrateClient";
 
 // ─── AI Risk Types ────────────────────────────────────────────────────────────
 type RiskLevel = "low" | "medium" | "high";
@@ -17,23 +19,18 @@ type RiskResult = {
   step_up: StepUp;
 };
 
-type RiskTrace = {
+export type VerificationTrace = {
   lastRiskRequest: Record<string, unknown> | null;
   lastRiskResponse: RiskResult | null;
-  lastNarrateText: string | null;
-  lastUpdated: string | null;
+  lastNarratePayload: Record<string, unknown> | null;
+  lastNarrateResult: string | null;
+  updatedAt: string | null;
 };
 
 const RISK_DEFAULT: RiskResult = {
   risk_level: "medium",
-  reason: "Defaulting to standard verification.",
+  reason: "Fallback (risk engine unavailable).",
   step_up: "tilt",
-};
-
-const STEP_UP_LABEL: Record<StepUp, string> = {
-  none: "Auto-Pass",
-  tilt: "Tilt Challenge",
-  beat: "Beat Challenge",
 };
 
 const RISK_COLOR: Record<RiskLevel, string> = {
@@ -42,32 +39,42 @@ const RISK_COLOR: Record<RiskLevel, string> = {
   high: "#f87171",
 };
 
-// ─── AI Trust Panel ───────────────────────────────────────────────────────────
-function AITrustPanel({ risk, loading }: { risk: RiskResult | null; loading: boolean }) {
-  const r = risk ?? RISK_DEFAULT;
-  const color = RISK_COLOR[r.risk_level];
-  const label = r.risk_level.charAt(0).toUpperCase() + r.risk_level.slice(1);
+const DEMO_RISK_PAYLOAD = {
+  traffic_load: 0.85,
+  motion_entropy_score: 0.25,
+  interaction_latency_variance: 0.30,
+  tilt_fail_count: 0,
+  device_type: "mobile",
+} as const;
+
+// ─── Trust chip (compact) ─────────────────────────────────────────────────────
+function TrustChip({
+  risk,
+  loading,
+  onDebugClick,
+}: {
+  risk: RiskResult | null;
+  loading: boolean;
+  onDebugClick: () => void;
+}) {
+  const label = risk ? risk.risk_level.charAt(0).toUpperCase() + risk.risk_level.slice(1) : "…";
+  const color = risk ? RISK_COLOR[risk.risk_level] : "#475569";
   return (
-    <div style={{ borderRadius: 12, border: "1px solid rgba(51,65,85,0.8)", background: "rgba(15,23,42,0.85)", padding: "10px 14px", width: "100%", boxSizing: "border-box" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-        <div style={{ width: 6, height: 6, borderRadius: "50%", background: loading ? "#475569" : color, flexShrink: 0 }} />
-        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: "#64748b", textTransform: "uppercase" }}>AI Trust Engine</span>
-      </div>
-      {loading ? (
-        <p style={{ fontSize: 11, color: "#475569", margin: 0 }}>Evaluating risk…</p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>Risk Level</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color }}>{label}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>Verification Mode</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#cbd5e1" }}>{STEP_UP_LABEL[r.step_up]}</span>
-          </div>
-          <p style={{ fontSize: 10, color: "#64748b", margin: "3px 0 0", lineHeight: 1.5 }}>{r.reason}</p>
-        </div>
-      )}
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#94a3b8" }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: loading ? "#475569" : color, flexShrink: 0 }} />
+        Trust: {loading ? "…" : label}
+      </span>
+      <button
+        type="button"
+        onClick={onDebugClick}
+        style={{
+          fontSize: 10, color: "#64748b", background: "none", border: "none", cursor: "pointer",
+          textDecoration: "underline", padding: 0,
+        }}
+      >
+        Debug
+      </button>
     </div>
   );
 }
@@ -78,19 +85,24 @@ function DebugDrawer({
   tiltFailCount,
   risk,
   trace,
+  open,
+  onOpen,
+  onClose,
 }: {
   currentStep: string;
   tiltFailCount: number;
   risk: RiskResult | null;
-  trace: RiskTrace;
+  trace: VerificationTrace;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const r = risk ?? RISK_DEFAULT;
   return (
     <div style={{ position: "fixed", top: 12, right: 12, zIndex: 9999 }}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={open ? onClose : onOpen}
         style={{
           fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
           background: "rgba(15,23,42,0.92)", border: "1px solid rgba(51,65,85,0.9)",
@@ -100,38 +112,53 @@ function DebugDrawer({
         {open ? "✕ Debug" : "Debug"}
       </button>
       {open && (
-        <div style={{
-          marginTop: 6, background: "rgba(10,15,28,0.97)", border: "1px solid rgba(51,65,85,0.8)",
-          borderRadius: 12, padding: "12px 14px", width: 280, maxHeight: "80dvh",
-          overflowY: "auto", fontSize: 10, color: "#94a3b8", lineHeight: 1.6,
-        }}>
-          <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", color: "#475569", textTransform: "uppercase" }}>
-            AI Debug Trace
-          </p>
-          <Row label="currentStep" value={currentStep} />
-          <Row label="tiltFailCount" value={String(tiltFailCount)} />
-          <Row label="risk_level" value={r.risk_level} color={RISK_COLOR[r.risk_level]} />
-          <Row label="step_up" value={r.step_up} />
-          <Row label="reason" value={r.reason} wrap />
-          {trace.lastNarrateText && <Row label="narrateText" value={trace.lastNarrateText} wrap />}
-          {trace.lastUpdated && <Row label="lastUpdated" value={trace.lastUpdated} />}
-          {trace.lastRiskRequest && (
-            <div style={{ marginTop: 8 }}>
-              <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>Last Request</p>
-              <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-                {JSON.stringify(trace.lastRiskRequest, null, 2)}
-              </pre>
-            </div>
-          )}
-          {trace.lastRiskResponse && (
-            <div style={{ marginTop: 8 }}>
-              <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>Last Response</p>
-              <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-                {JSON.stringify(trace.lastRiskResponse, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
+      <div style={{
+        marginTop: 6, background: "rgba(10,15,28,0.97)", border: "1px solid rgba(51,65,85,0.8)",
+        borderRadius: 12, padding: "12px 14px", width: 280, maxHeight: "80dvh",
+        overflowY: "auto", fontSize: 10, color: "#94a3b8", lineHeight: 1.6,
+      }}>
+        <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", color: "#475569", textTransform: "uppercase" }}>
+          AI Debug Trace
+        </p>
+        <Row label="currentStep" value={currentStep} />
+        <Row label="tiltFailCount" value={String(tiltFailCount)} />
+        <Row label="risk_level" value={r.risk_level} color={RISK_COLOR[r.risk_level]} />
+        <Row label="reason" value={r.reason} wrap />
+        <Row label="step_up" value={r.step_up} />
+        {trace.updatedAt && <Row label="updatedAt" value={trace.updatedAt} />}
+        {trace.lastRiskRequest != null && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>lastRiskRequest</p>
+            <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {JSON.stringify(trace.lastRiskRequest, null, 2)}
+            </pre>
+          </div>
+        )}
+        {trace.lastRiskResponse != null && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>lastRiskResponse</p>
+            <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {JSON.stringify(trace.lastRiskResponse, null, 2)}
+            </pre>
+          </div>
+        )}
+        {trace.lastNarratePayload != null && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>lastNarratePayload</p>
+            <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {JSON.stringify(trace.lastNarratePayload, null, 2)}
+            </pre>
+          </div>
+        )}
+        {trace.lastNarrateResult != null && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ margin: "0 0 3px", fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>lastNarrateResult</p>
+            <pre style={{ margin: 0, fontSize: 9, color: "#64748b", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+              {trace.lastNarrateResult}
+            </pre>
+          </div>
+        )}
+      </div>
       )}
     </div>
   );
@@ -148,65 +175,35 @@ function Row({ label, value, color, wrap }: { label: string; value: string; colo
 
 // ─── Voice Guidance Button ────────────────────────────────────────────────────
 function VoiceGuidanceButton({
-  currentStep,
+  step,
   riskLevel,
   disabled,
-  onNarrateText,
+  voiceLoading,
+  voiceText,
+  onNarrate,
 }: {
-  currentStep: "tilt" | "beat" | "none";
+  step: "tilt" | "beat";
   riskLevel: RiskLevel;
   disabled?: boolean;
-  onNarrateText?: (text: string) => void;
+  voiceLoading: boolean;
+  voiceText: string | null;
+  onNarrate: () => Promise<void>;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [fallbackText, setFallbackText] = useState<string | null>(null);
-
-  const handleClick = useCallback(async () => {
-    if (loading || disabled) return;
-    setLoading(true);
-    setFallbackText(null);
-    try {
-      const res = await fetch("/api/ai/narrate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          step: currentStep,
-          risk_level: riskLevel,
-          accessibility: { voice_guidance: true },
-        }),
-      });
-      const contentType = res.headers.get("Content-Type") ?? "";
-      if (contentType.includes("audio")) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.play().catch(() => {});
-        audio.addEventListener("ended", () => URL.revokeObjectURL(url));
-        onNarrateText?.("[audio played]");
-      } else {
-        const json = await res.json();
-        if (typeof json?.text === "string") {
-          setFallbackText(json.text);
-          onNarrateText?.(json.text);
-        }
-      }
-    } catch {
-      // fail silently
-    } finally {
-      setLoading(false);
-    }
-  }, [loading, disabled, currentStep, riskLevel, onNarrateText]);
+  const handleClick = useCallback(() => {
+    if (voiceLoading || disabled) return;
+    onNarrate();
+  }, [voiceLoading, disabled, onNarrate]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <button
         type="button"
         onClick={handleClick}
-        disabled={loading || disabled}
+        disabled={voiceLoading || disabled}
         style={{
           height: 36, borderRadius: 10, border: "1px solid rgba(51,65,85,0.8)",
-          background: "rgba(30,41,59,0.8)", color: loading || disabled ? "#475569" : "#93c5fd",
-          fontSize: 12, fontWeight: 500, cursor: loading || disabled ? "default" : "pointer",
+          background: "rgba(30,41,59,0.8)", color: voiceLoading || disabled ? "#475569" : "#93c5fd",
+          fontSize: 12, fontWeight: 500, cursor: voiceLoading || disabled ? "default" : "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
           width: "100%", transition: "color 0.15s",
         }}
@@ -215,11 +212,11 @@ function VoiceGuidanceButton({
           <path d="M8 1a3 3 0 0 1 3 3v4a3 3 0 1 1-6 0V4a3 3 0 0 1 3-3Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           <path d="M3 8a5 5 0 0 0 10 0M8 13v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
-        {loading ? "Loading…" : "Enable AI Voice Guidance"}
+        {voiceLoading ? "Loading…" : "Enable AI Voice Guidance"}
       </button>
-      {fallbackText && (
+      {voiceText != null && voiceText !== "" && (
         <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", lineHeight: 1.5, margin: 0 }}>
-          {fallbackText}
+          {voiceText}
         </p>
       )}
     </div>
@@ -673,41 +670,35 @@ export default function VerificationWizard({
   const { smoothedBeta, smoothedGamma, smoothedRef, available, permissionState, requestPermission } =
     useDeviceOrientation();
 
-  // ── AI Risk Evaluation ────────────────────────────────────────────────────
-  const [riskResult, setRiskResult] = useState<RiskResult | null>(null);
+  // ── Verification state machine (AI) ────────────────────────────────────────
+  const [risk, setRisk] = useState<RiskResult | null>(null);
   const [riskLoading, setRiskLoading] = useState(true);
   const [tiltFailCount, setTiltFailCount] = useState(0);
   const tiltFailCountRef = useRef(0);
+  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceText, setVoiceText] = useState<string | null>(null);
+  const [debugOpen, setDebugOpen] = useState(false);
 
-  const [trace, setTrace] = useState<RiskTrace>({
+  const [trace, setTrace] = useState<VerificationTrace>({
     lastRiskRequest: null,
     lastRiskResponse: null,
-    lastNarrateText: null,
-    lastUpdated: null,
+    lastNarratePayload: null,
+    lastNarrateResult: null,
+    updatedAt: null,
   });
 
-  const callRiskEval = useCallback(async (failCount: number) => {
-    const payload = {
-      traffic_load: 0.85,
-      motion_entropy_score: 0.25,
-      interaction_latency_variance: 0.30,
-      tilt_fail_count: failCount,
-      device_type: "mobile",
-    };
-    setTrace((prev) => ({ ...prev, lastRiskRequest: payload, lastUpdated: new Date().toISOString() }));
+  const callRiskEval = useCallback(async (failCount: number): Promise<RiskResult> => {
+    const payload = { ...DEMO_RISK_PAYLOAD, tilt_fail_count: failCount };
+    const ts = new Date().toISOString();
+    setTrace((prev) => ({ ...prev, lastRiskRequest: payload as Record<string, unknown>, updatedAt: ts }));
     try {
-      const res = await fetch("/api/risk/evaluate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data: RiskResult = await res.json();
-      setRiskResult(data);
-      setTrace((prev) => ({ ...prev, lastRiskResponse: data, lastUpdated: new Date().toISOString() }));
+      const data = await evaluateRisk(payload);
+      setRisk(data);
+      setTrace((prev) => ({ ...prev, lastRiskResponse: data, updatedAt: new Date().toISOString() }));
       return data;
     } catch {
-      setRiskResult(RISK_DEFAULT);
-      setTrace((prev) => ({ ...prev, lastRiskResponse: RISK_DEFAULT, lastUpdated: new Date().toISOString() }));
+      setRisk(RISK_DEFAULT);
+      setTrace((prev) => ({ ...prev, lastRiskResponse: RISK_DEFAULT, updatedAt: new Date().toISOString() }));
       return RISK_DEFAULT;
     }
   }, []);
@@ -715,18 +706,42 @@ export default function VerificationWizard({
   useEffect(() => {
     let cancelled = false;
     setRiskLoading(true);
-    callRiskEval(0).finally(() => {
-      if (!cancelled) setRiskLoading(false);
-    });
+    callRiskEval(0)
+      .finally(() => {
+        if (!cancelled) setRiskLoading(false);
+      });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [callRiskEval]);
 
-  const activeStepUp: StepUp = riskResult?.step_up ?? "tilt";
-
-  const handleNarrateText = useCallback((text: string) => {
-    setTrace((prev) => ({ ...prev, lastNarrateText: text, lastUpdated: new Date().toISOString() }));
-  }, []);
+  const handleNarrate = useCallback(async () => {
+    const step = screen === "beat" ? "beat" : "tilt";
+    const payload = {
+      step,
+      risk_level: risk?.risk_level ?? "medium",
+      accessibility: { voice_guidance: true },
+    };
+    setVoiceLoading(true);
+    setVoiceText(null);
+    const ts = new Date().toISOString();
+    setTrace((prev) => ({ ...prev, lastNarratePayload: payload as Record<string, unknown>, updatedAt: ts }));
+    try {
+      const result = await narrate(payload);
+      if (result.kind === "audio") {
+        const url = URL.createObjectURL(result.blob);
+        const audio = new Audio(url);
+        audio.play().catch(() => {});
+        audio.addEventListener("ended", () => URL.revokeObjectURL(url));
+        setTrace((prev) => ({ ...prev, lastNarrateResult: "audio", updatedAt: new Date().toISOString() }));
+      } else {
+        setVoiceText(result.text);
+        setTrace((prev) => ({ ...prev, lastNarrateResult: result.text || null, updatedAt: new Date().toISOString() }));
+      }
+    } catch {
+      setTrace((prev) => ({ ...prev, lastNarrateResult: "(error)", updatedAt: new Date().toISOString() }));
+    } finally {
+      setVoiceLoading(false);
+    }
+  }, [risk?.risk_level, screen]);
 
   const [screen, setScreen] = useState<Screen>("intro");
   const [motionUnlocked, setMotionUnlocked] = useState(false);
@@ -794,29 +809,8 @@ export default function VerificationWizard({
     setScreen("result");
   }, []);
 
+  // Start Verification: always go to tilt (default verification step)
   const advanceToTasks = useCallback(() => {
-    const step = riskResult?.step_up ?? "tilt";
-
-    // Auto-pass: skip verification entirely
-    if (step === "none") {
-      const score = scoreHumanConfidence({
-        motionSamples: [],
-        directedTimings: undefined,
-        stabilityPct: 100,
-        stabilityHoldPct: 100,
-      });
-      finish(score);
-      return;
-    }
-
-    // Beat challenge: go straight to beat screen
-    if (step === "beat") {
-      const triggered = triggerBeatChallenge();
-      if (triggered) return;
-      // No songs available — fall back to tilt flow
-    }
-
-    // Default: tilt challenge flow
     setScreen("tasks");
     setTaskId("left");
     timingsRef.current = {};
@@ -831,7 +825,7 @@ export default function VerificationWizard({
     setInside(false);
     setHoldPct(0);
     setPulseKey((k) => k + 1);
-  }, [riskResult, finish, triggerBeatChallenge, smoothedRef]);
+  }, [smoothedRef]);
 
   useEffect(() => {
     if (screen !== "tasks") return;
@@ -1053,19 +1047,21 @@ export default function VerificationWizard({
     return remaining;
   }, [screen, taskId, inside, pulseKey]); // pulseKey forces re-eval on each tick
 
-  // currentStep label for debug drawer
-  const debugStep =
+  const currentStep =
     screen === "intro" ? "preview" :
-    screen === "tasks" ? `tilt:${taskId}` :
+    screen === "tasks" ? "tilt" :
     screen === "beat" ? "beat" : "complete";
 
   return (
     <main className="min-h-dvh text-white" style={{ background: "#0f172a" }}>
       <DebugDrawer
-        currentStep={debugStep}
+        currentStep={screen === "tasks" ? `tilt:${taskId}` : currentStep}
         tiltFailCount={tiltFailCount}
-        risk={riskResult}
+        risk={risk}
         trace={trace}
+        open={debugOpen}
+        onOpen={() => setDebugOpen(true)}
+        onClose={() => setDebugOpen(false)}
       />
       <AnimatePresence mode="popLayout" initial={false}>
 
@@ -1154,15 +1150,9 @@ export default function VerificationWizard({
               Move your phone to see real-time orientation tracking.
             </p>
 
-            {/* AI Trust Panel */}
-            <div
-              style={{
-                position: "relative",
-                zIndex: 1,
-                width: "min(320px, 90vw)",
-              }}
-            >
-              <AITrustPanel risk={riskResult} loading={riskLoading} />
+            {/* Trust chip + Debug */}
+            <div style={{ position: "relative", zIndex: 1, width: "min(320px, 90vw)" }}>
+              <TrustChip risk={risk} loading={riskLoading} onDebugClick={() => setDebugOpen(true)} />
             </div>
 
             <div
@@ -1173,13 +1163,14 @@ export default function VerificationWizard({
                 marginBottom: "calc(20px + env(safe-area-inset-bottom, 0px))"
               }}
             >
-              {/* Voice Guidance */}
               <div style={{ marginBottom: 10 }}>
                 <VoiceGuidanceButton
-                  currentStep={activeStepUp === "beat" ? "beat" : activeStepUp === "none" ? "none" : "tilt"}
-                  riskLevel={riskResult?.risk_level ?? "medium"}
+                  step="tilt"
+                  riskLevel={risk?.risk_level ?? "medium"}
                   disabled={riskLoading}
-                  onNarrateText={handleNarrateText}
+                  voiceLoading={voiceLoading}
+                  voiceText={voiceText}
+                  onNarrate={handleNarrate}
                 />
               </div>
 
@@ -1261,15 +1252,14 @@ export default function VerificationWizard({
             transition={reduceMotion ? undefined : { type: "spring", stiffness: 200, damping: 26, mass: 0.6 }}
           >
             <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-6 py-10">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
-                <p className="text-[10px] font-medium text-slate-500">
-                  Step {completedCount + 1} of 3
-                </p>
-              </div>
-
-              <div className="mt-4">
-                <AITrustPanel risk={riskResult} loading={riskLoading} />
+                <div className="flex items-center gap-3">
+                  <TrustChip risk={risk} loading={riskLoading} onDebugClick={() => setDebugOpen(true)} />
+                  <p className="text-[10px] font-medium text-slate-500">
+                    Step {completedCount + 1} of 3
+                  </p>
+                </div>
               </div>
 
               <div className="mt-4 space-y-1">
@@ -1430,9 +1420,11 @@ export default function VerificationWizard({
 
               <div className="mt-4">
                 <VoiceGuidanceButton
-                  currentStep="tilt"
-                  riskLevel={riskResult?.risk_level ?? "medium"}
-                  onNarrateText={handleNarrateText}
+                  step="tilt"
+                  riskLevel={risk?.risk_level ?? "medium"}
+                  voiceLoading={voiceLoading}
+                  voiceText={voiceText}
+                  onNarrate={handleNarrate}
                 />
               </div>
             </div>
@@ -1452,9 +1444,11 @@ export default function VerificationWizard({
             />
             <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", width: "min(320px, 90vw)", zIndex: 100 }}>
               <VoiceGuidanceButton
-                currentStep="beat"
-                riskLevel={riskResult?.risk_level ?? "medium"}
-                onNarrateText={handleNarrateText}
+                step="beat"
+                riskLevel={risk?.risk_level ?? "medium"}
+                voiceLoading={voiceLoading}
+                voiceText={voiceText}
+                onNarrate={handleNarrate}
               />
             </div>
           </div>
