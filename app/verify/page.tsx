@@ -9,16 +9,18 @@ function VerifyPageClient() {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("return") ?? "/";
 
-  const verifiedUrl =
-    returnTo.includes("?") ? `${returnTo}&verified=true` : `${returnTo}?verified=true`;
+  const verifiedUrl = returnTo.includes("?")
+    ? `${returnTo}&verified=true`
+    : `${returnTo}?verified=true`;
 
   return (
     <VerificationWizard
+      returnTo={returnTo}
       onVerified={() => {
-        router.push("/?verified=true");
+        router.push(verifiedUrl);
       }}
       onCancel={() => {
-        router.push("/");
+        router.back();
       }}
     />
   );
