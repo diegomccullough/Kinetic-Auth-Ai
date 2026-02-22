@@ -101,6 +101,96 @@ function speakInstruction(text: string) {
   window.speechSynthesis.speak(utterance);
 }
 
+// ─── Accessibility Badge Component ─────────────────────────────────────────────
+function AccessibilityBadge({ 
+  isActive, 
+  compact = false 
+}: { 
+  isActive: boolean; 
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "4px 8px",
+          borderRadius: 8,
+          background: isActive ? "rgba(59, 130, 246, 0.15)" : "rgba(71, 85, 105, 0.2)",
+          border: isActive ? "1px solid rgba(59, 130, 246, 0.3)" : "1px solid rgba(71, 85, 105, 0.3)",
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <circle cx="12" cy="4" r="2" fill={isActive ? "#60a5fa" : "#64748b"} />
+          <path 
+            d="M12 6v4M8 14l4-4 4 4M8 14v4M16 14v4" 
+            stroke={isActive ? "#60a5fa" : "#64748b"} 
+            strokeWidth="2" 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+          />
+        </svg>
+        <span style={{ 
+          fontSize: 10, 
+          color: isActive ? "#93c5fd" : "#64748b", 
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+        }}>
+          {isActive ? "A11Y ON" : "A11Y OFF"}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 14px",
+        borderRadius: 12,
+        background: isActive ? "rgba(59, 130, 246, 0.15)" : "rgba(71, 85, 105, 0.2)",
+        border: isActive ? "1px solid rgba(59, 130, 246, 0.3)" : "1px solid rgba(71, 85, 105, 0.3)",
+      }}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <circle cx="12" cy="4" r="2" fill={isActive ? "#60a5fa" : "#64748b"} />
+        <path 
+          d="M12 6v4M8 14l4-4 4 4M8 14v4M16 14v4" 
+          stroke={isActive ? "#60a5fa" : "#64748b"} 
+          strokeWidth="2" 
+          strokeLinecap="round" 
+          strokeLinejoin="round" 
+        />
+      </svg>
+      <span style={{ 
+        fontSize: 12, 
+        color: isActive ? "#93c5fd" : "#64748b", 
+        fontWeight: 500 
+      }}>
+        {isActive ? "Accessibility features: ON" : "Accessibility features: OFF"}
+      </span>
+      {isActive && (
+        <span style={{
+          marginLeft: "auto",
+          fontSize: 10,
+          color: "#60a5fa",
+          background: "rgba(59, 130, 246, 0.2)",
+          padding: "2px 6px",
+          borderRadius: 4,
+          fontWeight: 600,
+        }}>
+          ACTIVE
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ─── AI Risk Types ────────────────────────────────────────────────────────────
 type RiskLevel = "low" | "medium" | "high";
 type StepUp = "none" | "tilt" | "beat";
@@ -426,7 +516,7 @@ function HoldRing({
 }
 
 // ─── Step-Up Overview (user must press Continue before beat challenge starts) ─
-function StepUpOverviewScreen({ onContinue, reduceMotion }: { onContinue: () => void; reduceMotion: boolean | null }) {
+function StepUpOverviewScreen({ onContinue, reduceMotion, accessibilityActive }: { onContinue: () => void; reduceMotion: boolean | null; accessibilityActive: boolean }) {
   return (
     <motion.section
       key="step_up_overview"
@@ -462,7 +552,10 @@ function StepUpOverviewScreen({ onContinue, reduceMotion }: { onContinue: () => 
 
         {/* Text */}
         <div className="text-center flex flex-col gap-3">
-          <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH · STEP-UP</p>
+          <div className="flex items-center justify-center gap-3">
+            <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH · STEP-UP</p>
+            <AccessibilityBadge isActive={accessibilityActive} compact />
+          </div>
           <h2 className="text-xl font-bold text-white leading-snug">Enhanced Verification Required</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
             We detected inconsistent motion patterns during verification. To protect queue fairness, we need one additional step.
@@ -628,11 +721,13 @@ function BeatChallenge({
   onPass,
   onSkip,
   reduceMotion,
+  accessibilityActive,
 }: {
   song: EventSong;
   onPass: () => void;
   onSkip: () => void;
   reduceMotion: boolean | null;
+  accessibilityActive: boolean;
 }) {
   const beatIntervalMs = Math.round(60_000 / song.bpm);
   const [beatsHit, setBeatsHit] = useState(0);
@@ -815,7 +910,10 @@ function BeatChallenge({
 
         {/* Header */}
         <div className="text-center">
-          <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500 mb-2">KINETICAUTH · BEAT CHECK</p>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH · BEAT CHECK</p>
+            <AccessibilityBadge isActive={accessibilityActive} compact />
+          </div>
           <h2 className="text-xl font-bold text-white">Shake to the Beat</h2>
           <p className="mt-1 text-sm text-slate-400">
             {song.audioSrc
@@ -1065,7 +1163,10 @@ function DragChallenge({
       <div ref={containerRef} className="w-full max-w-[380px] flex flex-col items-center gap-6">
         {/* Header */}
         <div className="text-center">
-          <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500 mb-2">KINETICAUTH · DRAG TEST</p>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH · TAP TEST</p>
+            <AccessibilityBadge isActive={accessibilityMode} compact />
+          </div>
           <h2 className="text-xl font-bold text-white">Drag the Ticket</h2>
           <p className="mt-1 text-sm text-slate-400">
             Drag the ticket onto the stage to verify
@@ -1274,7 +1375,10 @@ function MultiDragChallenge({
       <div ref={containerRef} className="w-full max-w-[380px] flex flex-col items-center gap-6">
         {/* Header */}
         <div className="text-center">
-          <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500 mb-2">KINETICAUTH · MULTI-DRAG</p>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH · MULTI-DRAG</p>
+            <AccessibilityBadge isActive={accessibilityMode} compact />
+          </div>
           <h2 className="text-xl font-bold text-white">Place All Tickets</h2>
           <p className="mt-1 text-sm text-slate-400">
             Drag each ticket to the stage while the music plays
@@ -1400,6 +1504,7 @@ function TiltChallenge({
   riskLoading,
   onSuccess,
   onFailure,
+  accessibilityActive,
 }: {
   smoothedGamma: number;
   smoothedRef: { current: { beta: number; gamma: number; alpha: number } };
@@ -1411,6 +1516,7 @@ function TiltChallenge({
   riskLoading: boolean;
   onSuccess: (score: ScoreBreakdown) => void;
   onFailure: (accumulated: TiltAccumulatedData) => void;
+  accessibilityActive: boolean;
 }) {
   const [taskId, setTaskId] = useState<TaskId>("left");
   const [holdPct, setHoldPct] = useState(0);
@@ -1599,6 +1705,7 @@ function TiltChallenge({
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
           <div className="flex items-center gap-3">
+            <AccessibilityBadge isActive={accessibilityActive} compact />
             <TrustChip risk={risk} loading={riskLoading} />
             <p className="text-[10px] font-medium text-slate-500">Step {completedCount + 1} of 3</p>
           </div>
@@ -2024,30 +2131,95 @@ export default function VerificationWizard({
               </div>
             </div>
 
-            {/* Accessibility indicator */}
-            {(accessibility.screenReaderActive || accessibility.reduceMotion) && (
+            {/* Device & Accessibility Status */}
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                width: "min(320px, 90vw)",
+              }}
+            >
+              {/* Device type indicator */}
               <div
                 style={{
-                  position: "relative",
-                  zIndex: 1,
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
                   padding: "8px 14px",
                   borderRadius: 12,
-                  background: "rgba(59, 130, 246, 0.15)",
-                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                  background: "rgba(71, 85, 105, 0.3)",
+                  border: "1px solid rgba(71, 85, 105, 0.5)",
+                }}
+              >
+                {accessibility.isDesktop ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <rect x="2" y="3" width="20" height="14" rx="2" stroke="#94a3b8" strokeWidth="2" />
+                    <path d="M8 21h8M12 17v4" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <rect x="5" y="2" width="14" height="20" rx="2" stroke="#94a3b8" strokeWidth="2" />
+                    <circle cx="12" cy="18" r="1" fill="#94a3b8" />
+                  </svg>
+                )}
+                <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>
+                  {accessibility.isDesktop ? "Desktop detected — Tap test" : "Mobile detected — Tilt test"}
+                </span>
+              </div>
+
+              {/* Accessibility status indicator - always shown */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 14px",
+                  borderRadius: 12,
+                  background: (accessibility.screenReaderActive || accessibility.reduceMotion)
+                    ? "rgba(59, 130, 246, 0.15)"
+                    : "rgba(71, 85, 105, 0.2)",
+                  border: (accessibility.screenReaderActive || accessibility.reduceMotion)
+                    ? "1px solid rgba(59, 130, 246, 0.3)"
+                    : "1px solid rgba(71, 85, 105, 0.3)",
                 }}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                  <circle cx="12" cy="4" r="2" fill="#60a5fa" />
-                  <path d="M12 6v4M8 14l4-4 4 4M8 14v4M16 14v4" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx="12" cy="4" r="2" fill={(accessibility.screenReaderActive || accessibility.reduceMotion) ? "#60a5fa" : "#64748b"} />
+                  <path 
+                    d="M12 6v4M8 14l4-4 4 4M8 14v4M16 14v4" 
+                    stroke={(accessibility.screenReaderActive || accessibility.reduceMotion) ? "#60a5fa" : "#64748b"} 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                  />
                 </svg>
-                <span style={{ fontSize: 12, color: "#93c5fd", fontWeight: 500 }}>
-                  Accessibility features detected
+                <span style={{ 
+                  fontSize: 12, 
+                  color: (accessibility.screenReaderActive || accessibility.reduceMotion) ? "#93c5fd" : "#64748b", 
+                  fontWeight: 500 
+                }}>
+                  {(accessibility.screenReaderActive || accessibility.reduceMotion)
+                    ? "Accessibility features: ON"
+                    : "Accessibility features: OFF"}
                 </span>
+                {(accessibility.screenReaderActive || accessibility.reduceMotion) && (
+                  <span style={{
+                    marginLeft: "auto",
+                    fontSize: 10,
+                    color: "#60a5fa",
+                    background: "rgba(59, 130, 246, 0.2)",
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    fontWeight: 600,
+                  }}>
+                    ACTIVE
+                  </span>
+                )}
               </div>
-            )}
+            </div>
 
             {/* Headline + subtitle */}
             <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
@@ -2070,9 +2242,9 @@ export default function VerificationWizard({
                   lineHeight: 1.4,
                 }}
               >
-                {accessibility.needsAlternativeTest
-                  ? "Complete a quick drag-and-drop test to continue."
-                  : "Tilt left and right to continue."}
+                {accessibility.isDesktop
+                  ? "Complete a quick tap test to continue."
+                  : "Tilt your phone left and right to continue."}
               </p>
             </div>
 
@@ -2092,13 +2264,13 @@ export default function VerificationWizard({
                 gap: 8,
               }}
             >
-              {/* Primary CTA - Motion test or Drag test based on device capability */}
-              {accessibility.needsAlternativeTest ? (
+              {/* Primary CTA - Tap test for desktop, Tilt test for mobile */}
+              {accessibility.isDesktop ? (
                 <motion.button
                   type="button"
                   onClick={() => {
                     if (accessibility.screenReaderActive) {
-                      speakInstruction("Starting drag and drop verification test.");
+                      speakInstruction("Starting tap verification test.");
                     }
                     setScreen("drag");
                     setCurrentStep("tilt");
@@ -2117,7 +2289,7 @@ export default function VerificationWizard({
                   }}
                   whileTap={reduceMotion ? undefined : { scale: 0.98 }}
                 >
-                  Start Drag Test
+                  Start Tap Test
                 </motion.button>
               ) : granted ? (
                 <motion.button
@@ -2137,7 +2309,7 @@ export default function VerificationWizard({
                   }}
                   whileTap={reduceMotion ? undefined : { scale: 0.98 }}
                 >
-                  Start Verification
+                  Start Tilt Test
                 </motion.button>
               ) : (
                 <motion.button
@@ -2168,33 +2340,6 @@ export default function VerificationWizard({
                 </motion.button>
               )}
 
-              {/* Alternative test option for mobile users */}
-              {!accessibility.needsAlternativeTest && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (accessibility.screenReaderActive) {
-                      speakInstruction("Switching to drag and drop test.");
-                    }
-                    setScreen("drag");
-                    setCurrentStep("tilt");
-                  }}
-                  style={{
-                    width: "100%",
-                    height: 44,
-                    borderRadius: 14,
-                    background: "rgba(30, 41, 59, 0.8)",
-                    color: "rgba(148,163,184,0.9)",
-                    fontSize: 14,
-                    fontWeight: 500,
-                    border: "1px solid rgba(71,85,105,0.5)",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  Use Drag Test Instead
-                </button>
-              )}
 
               {/* Skip verification button */}
               <button
@@ -2250,6 +2395,7 @@ export default function VerificationWizard({
             riskLoading={riskLoading}
             onSuccess={handleTiltSuccess}
             onFailure={handleTiltFailure}
+            accessibilityActive={accessibility.screenReaderActive || accessibility.reduceMotion}
           />
         ) : null}
 
@@ -2268,6 +2414,7 @@ export default function VerificationWizard({
             key="step_up_overview"
             onContinue={handleStepUpOverviewContinue}
             reduceMotion={reduceMotion}
+            accessibilityActive={accessibility.screenReaderActive || accessibility.reduceMotion}
           />
         ) : null}
 
@@ -2282,6 +2429,7 @@ export default function VerificationWizard({
               onPass={handleBeatPass}
               onSkip={handleBeatSkip}
               reduceMotion={reduceMotion}
+              accessibilityActive={accessibility.screenReaderActive || accessibility.reduceMotion}
             />
           ) : (
             <BeatPlaceholder key="beat-placeholder" onComplete={handleBeatPass} />
@@ -2373,6 +2521,7 @@ export default function VerificationWizard({
             <div className="relative mx-auto flex min-h-[100dvh] w-full max-w-[430px] flex-col px-6 py-10">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold tracking-[0.52em] text-slate-500">KINETICAUTH</p>
+                <AccessibilityBadge isActive={accessibility.screenReaderActive || accessibility.reduceMotion} compact />
               </div>
 
               <div className="flex flex-1 flex-col justify-center gap-6">
