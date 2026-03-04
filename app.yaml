@@ -1,0 +1,21 @@
+name: kinetic-auth-ai
+services:
+- name: kinetic-auth-ai
+  github:
+    branch: main
+    repo: diegomccullough/Kinetic-Auth-Ai
+  build_command: npm run build
+  run_command: npm start
+  source_dir: .
+  http_port: 3000
+  envs:
+  - key: NODE_ENV
+    value: production
+  - key: NEXT_PUBLIC_API_URL
+    value: ${APP_DOMAIN}
+static_sites:
+- name: kinetic-auth-static
+  source_dir: public
+  routes:
+  - path: /
+    target_origin: kinetic-auth-ai
