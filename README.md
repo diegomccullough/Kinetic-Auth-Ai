@@ -109,3 +109,39 @@ KineticAuth introduces:
 Low friction for real fans.
 Escalation only when risk increases.
 Security without surveillance.
+
+---
+
+## Deployment on DigitalOcean
+
+KineticAuth is configured for seamless deployment on DigitalOcean's App Platform.
+
+### Quick Start
+
+1. **Connect your GitHub repository** to DigitalOcean App Platform
+2. **Select the main branch** for automatic deployments
+3. **Review the `app.yaml` configuration** - it specifies:
+   - Node.js runtime environment
+   - Build command: `npm run build`
+   - Start command: `npm start`
+   - Environment variables for production
+4. **Deploy** - DigitalOcean automatically builds and deploys on each push to main
+
+### Configuration
+
+The `app.yaml` file in the repository root contains:
+- Service configuration for the Next.js application
+- Static site routing for public assets
+- Environment variable definitions
+- Build and run commands optimized for production
+
+### Environment Variables
+
+Ensure these are set in your DigitalOcean App:
+- `NODE_ENV=production`
+- `NEXT_PUBLIC_API_URL` - Will be auto-populated with your app domain
+
+### Deployment Status
+
+View deployment logs and manage your app at:
+https://cloud.digitalocean.com/apps
